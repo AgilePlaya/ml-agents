@@ -1,25 +1,39 @@
-using MLAgentsExamples;
+using System;
 using UnityEngine;
 using Unity.MLAgents;
+using Unity.MLAgents.Actuators;
 using Unity.MLAgentsExamples;
 using Unity.MLAgents.Sensors;
 using BodyPart = Unity.MLAgentsExamples.BodyPart;
+using Random = UnityEngine.Random;
 
 public class WalkerAgent : Agent
 {
-    public float maximumWalkingSpeed = 999; //The max walk velocity magnitude an agent will be rewarded for
-    Vector3 m_WalkDir; //Direction to the target
-    Quaternion m_WalkDirLookRot; //Will hold the rotation to our target
-    
-    [Header("Target To Walk Towards")] [Space(10)]
-    public float targetSpawnRadius; //The radius in which a target can be randomly spawned.
+    [Header("Walk Speed")]
+    [Range(0.1f, 10)]
+    [SerializeField]
+    //The walking speed to try and achieve
+    private float m_TargetWalkingSpeed = 10;
 
-    public Transform target; //Target the agent will walk towards.
-    public Transform ground; //Ground gameobject. The height will be used for target spawning
-    public bool detectTargets; //Should this agent detect targets
-    public bool respawnTargetWhenTouched; //Should the target respawn to a different position when touched
+    public float MTargetWalkingSpeed // property
+    {
+        get { return m_TargetWalkingSpeed; }
+        set { m_TargetWalkingSpeed = Mathf.Clamp(value, .1f, m_maxWalkingSpeed); }
+    }
 
-    [Header("Body Parts")] [Space(10)] public Transform hips;
+    const float m_maxWalkingSpeed = 10; //The max walking speed
+
+    //Should the agent sample a new goal velocity each episode?
+    //If true, walkSpeed will be randomly set between zero and m_maxWalkingSpeed in OnEpisodeBegin()
+    //If false, the goal velocity will be walkingSpeed
+    public bool randomizeWalkSpeedEachEpisode;
+
+    //The direction an agent will walk during training.
+    private Vector3 m_WorldDirToWalk = Vector3.right;
+
+    [Header("Target To Walk Towards")] public Transform target; //Target the agent will walk towards during training.
+
+    [Header("Body Parts")] public Transform hips;
     public Transform chest;
     public Transform spine;
     public Transform head;
@@ -35,21 +49,22 @@ public class WalkerAgent : Agent
     public Transform armR;
     public Transform forearmR;
     public Transform handR;
-    
-    [Header("Orientation")] [Space(10)]
-    //This will be used as a stable reference point for observations
-    //Because ragdolls can move erratically, using a standalone reference point can significantly improve learning
-    public GameObject orientationCube;
 
+    //This will be used as a stabilized model space reference point for observations
+    //Because ragdolls can move erratically during training, using a stabilized reference transform improves learning
+    OrientationCubeController m_OrientationCube;
+
+    //The indicator graphic gameobject that points towards the target
+    DirectionIndicator m_DirectionIndicator;
     JointDriveController m_JdController;
-
     EnvironmentParameters m_ResetParams;
 
     public override void Initialize()
     {
+        m_OrientationCube = GetComponentInChildren<OrientationCubeController>();
+        m_DirectionIndicator = GetComponentInChildren<DirectionIndicator>();
 
-        UpdateOrientationCube();
-
+        //Setup each body part
         m_JdController = GetComponent<JointDriveController>();
         m_JdController.SetupBodyPart(hips);
         m_JdController.SetupBodyPart(chest);
@@ -74,20 +89,43 @@ public class WalkerAgent : Agent
     }
 
     /// <summary>
+    /// Loop over body parts and reset them to initial conditions.
+    /// </summary>
+    public override void OnEpisodeBegin()
+    {
+        //Reset all of the body parts
+        foreach (var bodyPart in m_JdController.bodyPartsDict.Values)
+        {
+            bodyPart.Reset(bodyPart);
+        }
+
+        //Random start rotation to help generalize
+        hips.rotation = Quaternion.Euler(0, Random.Range(0.0f, 360.0f), 0);
+
+        UpdateOrientationObjects();
+
+        //Set our goal walking speed
+        MTargetWalkingSpeed =
+            randomizeWalkSpeedEachEpisode ? Random.Range(0.1f, m_maxWalkingSpeed) : MTargetWalkingSpeed;
+
+        SetResetParameters();
+    }
+
+    /// <summary>
     /// Add relevant information on each body part to observations.
     /// </summary>
     public void CollectObservationBodyPart(BodyPart bp, VectorSensor sensor)
     {
         //GROUND CHECK
-        sensor.AddObservation(bp.groundContact.touchingGround ? 1 : 0); // Is this bp touching the ground
+        sensor.AddObservation(bp.groundContact.touchingGround); // Is this bp touching the ground
 
         //Get velocities in the context of our orientation cube's space
         //Note: You can get these velocities in world space as well but it may not train as well.
-        sensor.AddObservation(orientationCube.transform.InverseTransformDirection(bp.rb.velocity));
-        sensor.AddObservation(orientationCube.transform.InverseTransformDirection(bp.rb.angularVelocity));
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformDirection(bp.rb.velocity));
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformDirection(bp.rb.angularVelocity));
 
         //Get position relative to hips in the context of our orientation cube's space
-        sensor.AddObservation(orientationCube.transform.InverseTransformDirection(bp.rb.position - hips.position));
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformDirection(bp.rb.position - hips.position));
 
         if (bp.rb.transform != hips && bp.rb.transform != handL && bp.rb.transform != handR)
         {
@@ -101,10 +139,26 @@ public class WalkerAgent : Agent
     /// </summary>
     public override void CollectObservations(VectorSensor sensor)
     {
-        sensor.AddObservation(Quaternion.FromToRotation(hips.forward, orientationCube.transform.forward));
-        sensor.AddObservation(Quaternion.FromToRotation(head.forward, orientationCube.transform.forward));
+        var cubeForward = m_OrientationCube.transform.forward;
 
-        sensor.AddObservation(orientationCube.transform.InverseTransformPoint(target.position));
+        //velocity we want to match
+        var velGoal = cubeForward * MTargetWalkingSpeed;
+        //ragdoll's avg vel
+        var avgVel = GetAvgVelocity();
+
+        //current ragdoll velocity. normalized
+        sensor.AddObservation(Vector3.Distance(velGoal, avgVel));
+        //avg body vel relative to cube
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformDirection(avgVel));
+        //vel goal relative to cube
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformDirection(velGoal));
+
+        //rotation deltas
+        sensor.AddObservation(Quaternion.FromToRotation(hips.forward, cubeForward));
+        sensor.AddObservation(Quaternion.FromToRotation(head.forward, cubeForward));
+
+        //Position of target position relative to cube
+        sensor.AddObservation(m_OrientationCube.transform.InverseTransformPoint(target.transform.position));
 
         foreach (var bodyPart in m_JdController.bodyPartsList)
         {
@@ -112,83 +166,123 @@ public class WalkerAgent : Agent
         }
     }
 
-    public override void OnActionReceived(float[] vectorAction)
+    public override void OnActionReceived(ActionBuffers actionBuffers)
+
     {
         var bpDict = m_JdController.bodyPartsDict;
         var i = -1;
 
-        bpDict[chest].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], vectorAction[++i]);
-        bpDict[spine].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], vectorAction[++i]);
+        var continuousActions = actionBuffers.ContinuousActions;
+        bpDict[chest].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], continuousActions[++i]);
+        bpDict[spine].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], continuousActions[++i]);
 
-        bpDict[thighL].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], 0);
-        bpDict[thighR].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], 0);
-        bpDict[shinL].SetJointTargetRotation(vectorAction[++i], 0, 0);
-        bpDict[shinR].SetJointTargetRotation(vectorAction[++i], 0, 0);
-        bpDict[footR].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], vectorAction[++i]);
-        bpDict[footL].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], vectorAction[++i]);
+        bpDict[thighL].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], 0);
+        bpDict[thighR].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], 0);
+        bpDict[shinL].SetJointTargetRotation(continuousActions[++i], 0, 0);
+        bpDict[shinR].SetJointTargetRotation(continuousActions[++i], 0, 0);
+        bpDict[footR].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], continuousActions[++i]);
+        bpDict[footL].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], continuousActions[++i]);
 
-        bpDict[armL].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], 0);
-        bpDict[armR].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], 0);
-        bpDict[forearmL].SetJointTargetRotation(vectorAction[++i], 0, 0);
-        bpDict[forearmR].SetJointTargetRotation(vectorAction[++i], 0, 0);
-        bpDict[head].SetJointTargetRotation(vectorAction[++i], vectorAction[++i], 0);
+        bpDict[armL].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], 0);
+        bpDict[armR].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], 0);
+        bpDict[forearmL].SetJointTargetRotation(continuousActions[++i], 0, 0);
+        bpDict[forearmR].SetJointTargetRotation(continuousActions[++i], 0, 0);
+        bpDict[head].SetJointTargetRotation(continuousActions[++i], continuousActions[++i], 0);
 
         //update joint strength settings
-        bpDict[chest].SetJointStrength(vectorAction[++i]);
-        bpDict[spine].SetJointStrength(vectorAction[++i]);
-        bpDict[head].SetJointStrength(vectorAction[++i]);
-        bpDict[thighL].SetJointStrength(vectorAction[++i]);
-        bpDict[shinL].SetJointStrength(vectorAction[++i]);
-        bpDict[footL].SetJointStrength(vectorAction[++i]);
-        bpDict[thighR].SetJointStrength(vectorAction[++i]);
-        bpDict[shinR].SetJointStrength(vectorAction[++i]);
-        bpDict[footR].SetJointStrength(vectorAction[++i]);
-        bpDict[armL].SetJointStrength(vectorAction[++i]);
-        bpDict[forearmL].SetJointStrength(vectorAction[++i]);
-        bpDict[armR].SetJointStrength(vectorAction[++i]);
-        bpDict[forearmR].SetJointStrength(vectorAction[++i]);
+        bpDict[chest].SetJointStrength(continuousActions[++i]);
+        bpDict[spine].SetJointStrength(continuousActions[++i]);
+        bpDict[head].SetJointStrength(continuousActions[++i]);
+        bpDict[thighL].SetJointStrength(continuousActions[++i]);
+        bpDict[shinL].SetJointStrength(continuousActions[++i]);
+        bpDict[footL].SetJointStrength(continuousActions[++i]);
+        bpDict[thighR].SetJointStrength(continuousActions[++i]);
+        bpDict[shinR].SetJointStrength(continuousActions[++i]);
+        bpDict[footR].SetJointStrength(continuousActions[++i]);
+        bpDict[armL].SetJointStrength(continuousActions[++i]);
+        bpDict[forearmL].SetJointStrength(continuousActions[++i]);
+        bpDict[armR].SetJointStrength(continuousActions[++i]);
+        bpDict[forearmR].SetJointStrength(continuousActions[++i]);
     }
 
-    void UpdateOrientationCube()
+    //Update OrientationCube and DirectionIndicator
+    void UpdateOrientationObjects()
     {
-        //FACING DIR
-        m_WalkDir = target.position - orientationCube.transform.position;
-        m_WalkDir.y = 0; //flatten dir on the y
-        m_WalkDirLookRot = Quaternion.LookRotation(m_WalkDir); //get our look rot to the target
-
-        //UPDATE ORIENTATION CUBE POS & ROT
-        orientationCube.transform.position = hips.position;
-        orientationCube.transform.rotation = m_WalkDirLookRot;
+        m_WorldDirToWalk = target.position - hips.position;
+        m_OrientationCube.UpdateOrientation(hips, target);
+        if (m_DirectionIndicator)
+        {
+            m_DirectionIndicator.MatchOrientation(m_OrientationCube.transform);
+        }
     }
 
     void FixedUpdate()
     {
-        if (detectTargets)
-        {
-            foreach (var bodyPart in m_JdController.bodyPartsDict.Values)
-            {
-                if (bodyPart.targetContact && bodyPart.targetContact.touchingTarget)
-                {
-                    TouchedTarget();
-                }
-            }
-        }
+        UpdateOrientationObjects();
 
-        UpdateOrientationCube();
+        var cubeForward = m_OrientationCube.transform.forward;
 
         // Set reward for this step according to mixture of the following elements.
-        // a. Velocity alignment with goal direction.
-        var moveTowardsTargetReward = Vector3.Dot(orientationCube.transform.forward,
-            Vector3.ClampMagnitude(m_JdController.bodyPartsDict[hips].rb.velocity, maximumWalkingSpeed));
-        // b. Rotation alignment with goal direction.
-        var lookAtTargetReward = Vector3.Dot(orientationCube.transform.forward, head.forward);
-        // c. Encourage head height.
-        var headHeightOverFeetReward = (head.position.y - footL.position.y) + (head.position.y - footR.position.y);
-        AddReward(
-            +0.02f * moveTowardsTargetReward
-            + 0.01f * lookAtTargetReward
-            + 0.01f * headHeightOverFeetReward
-        );
+        // a. Match target speed
+        //This reward will approach 1 if it matches perfectly and approach zero as it deviates
+        var matchSpeedReward = GetMatchingVelocityReward(cubeForward * MTargetWalkingSpeed, GetAvgVelocity());
+
+        //Check for NaNs
+        if (float.IsNaN(matchSpeedReward))
+        {
+            throw new ArgumentException(
+                "NaN in moveTowardsTargetReward.\n" +
+                $" cubeForward: {cubeForward}\n" +
+                $" hips.velocity: {m_JdController.bodyPartsDict[hips].rb.velocity}\n" +
+                $" maximumWalkingSpeed: {m_maxWalkingSpeed}"
+            );
+        }
+
+        // b. Rotation alignment with target direction.
+        //This reward will approach 1 if it faces the target direction perfectly and approach zero as it deviates
+        var lookAtTargetReward = (Vector3.Dot(cubeForward, head.forward) + 1) * .5F;
+
+        //Check for NaNs
+        if (float.IsNaN(lookAtTargetReward))
+        {
+            throw new ArgumentException(
+                "NaN in lookAtTargetReward.\n" +
+                $" cubeForward: {cubeForward}\n" +
+                $" head.forward: {head.forward}"
+            );
+        }
+
+        AddReward(matchSpeedReward * lookAtTargetReward);
+    }
+
+    //Returns the average velocity of all of the body parts
+    //Using the velocity of the hips only has shown to result in more erratic movement from the limbs, so...
+    //...using the average helps prevent this erratic movement
+    Vector3 GetAvgVelocity()
+    {
+        Vector3 velSum = Vector3.zero;
+
+        //ALL RBS
+        int numOfRb = 0;
+        foreach (var item in m_JdController.bodyPartsList)
+        {
+            numOfRb++;
+            velSum += item.rb.velocity;
+        }
+
+        var avgVel = velSum / numOfRb;
+        return avgVel;
+    }
+
+    //normalized value of the difference in avg speed vs goal walking speed.
+    public float GetMatchingVelocityReward(Vector3 velocityGoal, Vector3 actualVelocity)
+    {
+        //distance between our actual velocity and goal velocity
+        var velDeltaMagnitude = Mathf.Clamp(Vector3.Distance(actualVelocity, velocityGoal), 0, MTargetWalkingSpeed);
+
+        //return the value on a declining sigmoid shaped curve that decays from 1 to 0
+        //This reward will approach 1 if it matches perfectly and approach zero as it deviates
+        return Mathf.Pow(1 - Mathf.Pow(velDeltaMagnitude / MTargetWalkingSpeed, 2), 2);
     }
 
     /// <summary>
@@ -197,44 +291,6 @@ public class WalkerAgent : Agent
     public void TouchedTarget()
     {
         AddReward(1f);
-        if (respawnTargetWhenTouched)
-        {
-            MoveTargetToRandomPosition();
-        }
-    }
-
-    /// <summary>
-    /// Moves target to a random position within specified radius.
-    /// </summary>
-    public void MoveTargetToRandomPosition()
-    {
-        var newTargetPos = Random.insideUnitSphere * targetSpawnRadius;
-        newTargetPos.y = 5;
-        target.position = newTargetPos + ground.position;
-    }
-
-    /// <summary>
-    /// Loop over body parts and reset them to initial conditions.
-    /// </summary>
-    public override void OnEpisodeBegin()
-    {
-        //Reset all of the body parts
-        foreach (var bodyPart in m_JdController.bodyPartsDict.Values)
-        {
-            bodyPart.Reset(bodyPart);
-        }
-
-        //Random start rotation to help generalize
-        transform.rotation = Quaternion.Euler(0, Random.Range(0.0f, 360.0f), 0);
-
-        UpdateOrientationCube();
-
-        if (detectTargets && respawnTargetWhenTouched)
-        {
-            MoveTargetToRandomPosition();
-        }
-
-        SetResetParameters();
     }
 
     public void SetTorsoMass()
@@ -247,16 +303,5 @@ public class WalkerAgent : Agent
     public void SetResetParameters()
     {
         SetTorsoMass();
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        if (Application.isPlaying)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.matrix = orientationCube.transform.localToWorldMatrix;
-            Gizmos.DrawWireCube(Vector3.zero, orientationCube.transform.localScale);
-            Gizmos.DrawRay(Vector3.zero, Vector3.forward);
-        }
     }
 }

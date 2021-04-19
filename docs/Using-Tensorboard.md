@@ -12,7 +12,7 @@ start TensorBoard:
 
 1. Open a terminal or console window:
 1. Navigate to the directory where the ML-Agents Toolkit is installed.
-1. From the command line run: `tensorboard --logdir=results --port=6006`
+1. From the command line run: `tensorboard --logdir results --port 6006`
 1. Open a browser window and navigate to
    [localhost:6006](http://localhost:6006).
 
@@ -98,11 +98,11 @@ The ML-Agents training program saves the following statistics:
   This should increase while the agent is learning, and then decrease once the
   reward stabilizes.
 
-- `Losses/Forward Loss` (PPO/SAC+Curiosity) - The mean magnitude of the inverse
+- `Losses/Forward Loss` (PPO/SAC+Curiosity) - The mean magnitude of the forward
   model loss function. Corresponds to how well the model is able to predict the
   new observation encoding.
 
-- `Losses/Inverse Loss` (PPO/SAC+Curiosity) - The mean magnitude of the forward
+- `Losses/Inverse Loss` (PPO/SAC+Curiosity) - The mean magnitude of the inverse
   model loss function. Corresponds to how well the model is able to predict the
   action taken between two observations.
 
@@ -119,9 +119,15 @@ The ML-Agents training program saves the following statistics:
   skill level between two players. In a proper training run, the ELO of the
   agent should steadily increase.
 
+## Exporting Data from TensorBoard
+To export timeseries data in CSV or JSON format, check the "Show data download
+links" in the upper left. This will enable download links below each chart.
+
+![Example TensorBoard Run](images/TensorBoard-download.png)
+
 ## Custom Metrics from Unity
 
-To get custom metrics from a C# environment into Tensorboard, you can use the
+To get custom metrics from a C# environment into TensorBoard, you can use the
 `StatsRecorder`:
 
 ```csharp

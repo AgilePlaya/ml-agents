@@ -1,10 +1,9 @@
-using UnityEngine;
 using UnityEditor;
 using Unity.MLAgents.Sensors;
 
 namespace Unity.MLAgents.Editor
 {
-    [CustomEditor(typeof(CameraSensorComponent))]
+    [CustomEditor(typeof(CameraSensorComponent), editorForChildClasses: true)]
     [CanEditMultipleObjects]
     internal class CameraSensorComponentEditor : UnityEditor.Editor
     {
@@ -25,6 +24,8 @@ namespace Unity.MLAgents.Editor
                 EditorGUILayout.PropertyField(so.FindProperty("m_Width"), true);
                 EditorGUILayout.PropertyField(so.FindProperty("m_Height"), true);
                 EditorGUILayout.PropertyField(so.FindProperty("m_Grayscale"), true);
+                EditorGUILayout.PropertyField(so.FindProperty("m_ObservationStacks"), true);
+                EditorGUILayout.PropertyField(so.FindProperty("m_ObservationType"), true);
             }
             EditorGUI.EndDisabledGroup();
             EditorGUILayout.PropertyField(so.FindProperty("m_Compression"), true);

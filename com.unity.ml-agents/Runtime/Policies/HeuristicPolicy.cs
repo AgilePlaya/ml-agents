@@ -1,20 +1,20 @@
 using System.Collections.Generic;
 using System;
 using System.Collections;
+using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
 
 namespace Unity.MLAgents.Policies
 {
     /// <summary>
-    /// The Heuristic Policy uses a hards coded Heuristic method
+    /// The Heuristic Policy uses a hard-coded Heuristic method
     /// to take decisions each time the RequestDecision method is
     /// called.
     /// </summary>
     internal class HeuristicPolicy : IPolicy
     {
-        public delegate void ActionGenerator(float[] actionsOut);
-        ActionGenerator m_Heuristic;
-        float[] m_LastDecision;
+        ActuatorManager m_ActuatorManager;
+        ActionBuffers m_ActionBuffers;
         bool m_Done;
         bool m_DecisionRequested;
 
@@ -22,11 +22,14 @@ namespace Unity.MLAgents.Policies
         NullList m_NullList = new NullList();
 
 
-        /// <inheritdoc />
-        public HeuristicPolicy(ActionGenerator heuristic, int numActions)
+        public HeuristicPolicy(ActuatorManager actuatorManager, ActionSpec actionSpec)
         {
-            m_Heuristic = heuristic;
-            m_LastDecision = new float[numActions];
+            m_ActuatorManager = actuatorManager;
+            var numContinuousActions = actionSpec.NumContinuousActions;
+            var numDiscreteActions = actionSpec.NumDiscreteActions;
+            var continuousDecision = new ActionSegment<float>(new float[numContinuousActions], 0, numContinuousActions);
+            var discreteDecision = new ActionSegment<int>(new int[numDiscreteActions], 0, numDiscreteActions);
+            m_ActionBuffers = new ActionBuffers(continuousDecision, discreteDecision);
         }
 
         /// <inheritdoc />
@@ -35,18 +38,18 @@ namespace Unity.MLAgents.Policies
             StepSensors(sensors);
             m_Done = info.done;
             m_DecisionRequested = true;
-
         }
 
         /// <inheritdoc />
-        public float[] DecideAction()
+        public ref readonly ActionBuffers DecideAction()
         {
             if (!m_Done && m_DecisionRequested)
             {
-                 m_Heuristic.Invoke(m_LastDecision);
+                m_ActionBuffers.Clear();
+                m_ActuatorManager.ApplyHeuristic(m_ActionBuffers);
             }
             m_DecisionRequested = false;
-            return m_LastDecision;
+            return ref m_ActionBuffers;
         }
 
         public void Dispose()
@@ -57,7 +60,7 @@ namespace Unity.MLAgents.Policies
         /// Trivial implementation of the IList interface that does nothing.
         /// This is only used for "writing" observations that we will discard.
         /// </summary>
-        class NullList : IList<float>
+        internal class NullList : IList<float>
         {
             public IEnumerator<float> GetEnumerator()
             {
@@ -124,9 +127,9 @@ namespace Unity.MLAgents.Policies
         {
             foreach (var sensor in sensors)
             {
-                if (sensor.GetCompressionType() == SensorCompressionType.None)
+                if (sensor.GetCompressionSpec().SensorCompressionType == SensorCompressionType.None)
                 {
-                    m_ObservationWriter.SetTarget(m_NullList, sensor.GetObservationShape(), 0);
+                    m_ObservationWriter.SetTarget(m_NullList, sensor.GetObservationSpec(), 0);
                     sensor.Write(m_ObservationWriter);
                 }
                 else

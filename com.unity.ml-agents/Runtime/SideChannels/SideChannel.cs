@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System;
+using UnityEngine;
 
 namespace Unity.MLAgents.SideChannels
 {
@@ -11,8 +12,8 @@ namespace Unity.MLAgents.SideChannels
     /// To create your own, you'll need to create two, new mirrored classes, one in Unity (by
     /// extending <see cref="SideChannel"/>) and another in Python by extending a Python class
     /// also called SideChannel. Then, within your project, use
-    /// <see cref="SideChannelsManager.RegisterSideChannel"/> and
-    /// <see cref="SideChannelsManager.UnregisterSideChannel"/> to register and unregister your
+    /// <see cref="SideChannelManager.RegisterSideChannel"/> and
+    /// <see cref="SideChannelManager.UnregisterSideChannel"/> to register and unregister your
     /// custom side channel.
     /// </summary>
     public abstract class SideChannel
@@ -34,9 +35,18 @@ namespace Unity.MLAgents.SideChannels
 
         internal void ProcessMessage(byte[] msg)
         {
-            using (var incomingMsg = new IncomingMessage(msg))
+            try
             {
-                OnMessageReceived(incomingMsg);
+                using (var incomingMsg = new IncomingMessage(msg))
+                {
+                    OnMessageReceived(incomingMsg);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Catch all errors in the sidechannel processing, so that a single
+                // bad SideChannel implementation doesn't take everything down with it.
+                Debug.LogError($"Error processing SideChannel message: {ex}.\nThe message will be skipped.");
             }
         }
 

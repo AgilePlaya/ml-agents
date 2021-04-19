@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEditor;
 using Unity.Barracuda;
+using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Sensors.Reflection;
-using UnityEngine;
+using CheckTypeEnum = Unity.MLAgents.Inference.BarracudaModelParamLoader.FailedCheck.CheckTypeEnum;
 
 namespace Unity.MLAgents.Editor
 {
@@ -20,6 +21,14 @@ namespace Unity.MLAgents.Editor
         float m_TimeSinceModelReload;
         // Whether or not the model needs to be reloaded
         bool m_RequireReload;
+        const string k_BehaviorName = "m_BehaviorName";
+        const string k_BrainParametersName = "m_BrainParameters";
+        const string k_ModelName = "m_Model";
+        const string k_InferenceDeviceName = "m_InferenceDevice";
+        const string k_BehaviorTypeName = "m_BehaviorType";
+        const string k_TeamIdName = "TeamId";
+        const string k_UseChildSensorsName = "m_UseChildSensors";
+        const string k_ObservableAttributeHandlingName = "m_ObservableAttributeHandling";
 
         public override void OnInspectorGUI()
         {
@@ -33,36 +42,37 @@ namespace Unity.MLAgents.Editor
 
             EditorGUI.BeginChangeCheck();
             {
-                EditorGUILayout.PropertyField(so.FindProperty("m_BehaviorName"));
+                EditorGUILayout.PropertyField(so.FindProperty(k_BehaviorName));
             }
             needPolicyUpdate = EditorGUI.EndChangeCheck();
 
+            EditorGUI.BeginChangeCheck();
             EditorGUI.BeginDisabledGroup(!EditorUtilities.CanUpdateModelProperties());
             {
-                EditorGUILayout.PropertyField(so.FindProperty("m_BrainParameters"), true);
+                EditorGUILayout.PropertyField(so.FindProperty(k_BrainParametersName), true);
             }
             EditorGUI.EndDisabledGroup();
 
             EditorGUI.BeginChangeCheck();
             {
-                EditorGUILayout.PropertyField(so.FindProperty("m_Model"), true);
+                EditorGUILayout.PropertyField(so.FindProperty(k_ModelName), true);
                 EditorGUI.indentLevel++;
-                EditorGUILayout.PropertyField(so.FindProperty("m_InferenceDevice"), true);
+                EditorGUILayout.PropertyField(so.FindProperty(k_InferenceDeviceName), true);
                 EditorGUI.indentLevel--;
             }
             needPolicyUpdate = needPolicyUpdate || EditorGUI.EndChangeCheck();
 
             EditorGUI.BeginChangeCheck();
             {
-                EditorGUILayout.PropertyField(so.FindProperty("m_BehaviorType"));
+                EditorGUILayout.PropertyField(so.FindProperty(k_BehaviorTypeName));
             }
             needPolicyUpdate = needPolicyUpdate || EditorGUI.EndChangeCheck();
 
-            EditorGUILayout.PropertyField(so.FindProperty("TeamId"));
+            EditorGUILayout.PropertyField(so.FindProperty(k_TeamIdName));
             EditorGUI.BeginDisabledGroup(!EditorUtilities.CanUpdateModelProperties());
             {
-                EditorGUILayout.PropertyField(so.FindProperty("m_UseChildSensors"), true);
-                EditorGUILayout.PropertyField(so.FindProperty("m_ObservableAttributeHandling"), true);
+                EditorGUILayout.PropertyField(so.FindProperty(k_UseChildSensorsName), true);
+                EditorGUILayout.PropertyField(so.FindProperty(k_ObservableAttributeHandlingName), true);
             }
             EditorGUI.EndDisabledGroup();
 
@@ -90,24 +100,29 @@ namespace Unity.MLAgents.Editor
             // Display all failed checks
             D.logEnabled = false;
             Model barracudaModel = null;
-            var model = (NNModel)serializedObject.FindProperty("m_Model").objectReferenceValue;
+            var model = (NNModel)serializedObject.FindProperty(k_ModelName).objectReferenceValue;
             var behaviorParameters = (BehaviorParameters)target;
 
             // Grab the sensor components, since we need them to determine the observation sizes.
-            SensorComponent[] sensorComponents;
-            if (behaviorParameters.UseChildSensors)
+            // TODO make these methods of BehaviorParameters
+            var agent = behaviorParameters.gameObject.GetComponent<Agent>();
+            agent.sensors = new List<ISensor>();
+            agent.InitializeSensors();
+            var sensors = agent.sensors.ToArray();
+
+            ActuatorComponent[] actuatorComponents;
+            if (behaviorParameters.UseChildActuators)
             {
-                sensorComponents = behaviorParameters.GetComponentsInChildren<SensorComponent>();
+                actuatorComponents = behaviorParameters.GetComponentsInChildren<ActuatorComponent>();
             }
             else
             {
-                sensorComponents = behaviorParameters.GetComponents<SensorComponent>();
+                actuatorComponents = behaviorParameters.GetComponents<ActuatorComponent>();
             }
 
             // Get the total size of the sensors generated by ObservableAttributes.
             // If there are any errors (e.g. unsupported type, write-only properties), display them too.
             int observableAttributeSensorTotalSize = 0;
-            var agent = behaviorParameters.GetComponent<Agent>();
             if (agent != null && behaviorParameters.ObservableAttributeHandling != ObservableAttributeOptions.Ignore)
             {
                 List<string> observableErrors = new List<string>();
@@ -126,14 +141,27 @@ namespace Unity.MLAgents.Editor
             if (brainParameters != null)
             {
                 var failedChecks = Inference.BarracudaModelParamLoader.CheckModel(
-                    barracudaModel, brainParameters, sensorComponents,
+                    barracudaModel, brainParameters, sensors, actuatorComponents,
                     observableAttributeSensorTotalSize, behaviorParameters.BehaviorType
                 );
                 foreach (var check in failedChecks)
                 {
                     if (check != null)
                     {
-                        EditorGUILayout.HelpBox(check, MessageType.Warning);
+                        switch (check.CheckType)
+                        {
+                            case CheckTypeEnum.Info:
+                                EditorGUILayout.HelpBox(check.Message, MessageType.Info);
+                                break;
+                            case CheckTypeEnum.Warning:
+                                EditorGUILayout.HelpBox(check.Message, MessageType.Warning);
+                                break;
+                            case CheckTypeEnum.Error:
+                                EditorGUILayout.HelpBox(check.Message, MessageType.Error);
+                                break;
+                            default:
+                                break;
+                        }
                     }
                 }
             }

@@ -21,12 +21,10 @@ behaviors:
       extrinsic:
         gamma: 0.99
         strength: 1.0
-    output_path: default
     keep_checkpoints: 5
     max_steps: 15000000
     time_horizon: 128
     summary_freq: 20000
-    threaded: true
   SmallWallJump:
     trainer_type: sac
     hyperparameters:
@@ -49,9 +47,7 @@ behaviors:
       extrinsic:
         gamma: 0.99
         strength: 1.0
-    output_path: default
     keep_checkpoints: 5
     max_steps: 5000000
     time_horizon: 128
     summary_freq: 20000
-    threaded: true

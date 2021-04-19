@@ -1,161 +1,18 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using NUnit.Framework;
 using System.Reflection;
-using System.Collections.Generic;
+using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Sensors.Reflection;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.SideChannels;
+using Unity.MLAgents.Utils.Tests;
 
 namespace Unity.MLAgents.Tests
 {
-    internal class TestPolicy : IPolicy
-    {
-        public Action OnRequestDecision;
-        ObservationWriter m_ObsWriter = new ObservationWriter();
-        public void RequestDecision(AgentInfo info, List<ISensor> sensors)
-        {
-            foreach (var sensor in sensors)
-            {
-                sensor.GetObservationProto(m_ObsWriter);
-            }
-            OnRequestDecision?.Invoke();
-        }
-
-        public float[] DecideAction() { return new float[0]; }
-
-        public void Dispose() {}
-    }
-
-    public class TestAgent : Agent
-    {
-        internal AgentInfo _Info
-        {
-            get
-            {
-                return (AgentInfo)typeof(Agent).GetField("m_Info", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(this);
-            }
-            set
-            {
-                typeof(Agent).GetField("m_Info", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(this, value);
-            }
-        }
-
-        internal void SetPolicy(IPolicy policy)
-        {
-            typeof(Agent).GetField("m_Brain", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(this, policy);
-        }
-
-        internal IPolicy GetPolicy()
-        {
-            return (IPolicy)typeof(Agent).GetField("m_Brain", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(this);
-        }
-
-        public int initializeAgentCalls;
-        public int collectObservationsCalls;
-        public int collectObservationsCallsForEpisode;
-        public int agentActionCalls;
-        public int agentActionCallsForEpisode;
-        public int agentOnEpisodeBeginCalls;
-        public int heuristicCalls;
-        public TestSensor sensor1;
-        public TestSensor sensor2;
-
-        [Observable("observableFloat")]
-        public float observableFloat;
-
-        public override void Initialize()
-        {
-            initializeAgentCalls += 1;
-
-            // Add in some custom Sensors so we can confirm they get sorted as expected.
-            sensor1 = new TestSensor("testsensor1");
-            sensor2 = new TestSensor("testsensor2");
-            sensor2.compressionType = SensorCompressionType.PNG;
-
-            sensors.Add(sensor2);
-            sensors.Add(sensor1);
-        }
-
-        public override void CollectObservations(VectorSensor sensor)
-        {
-            collectObservationsCalls += 1;
-            collectObservationsCallsForEpisode += 1;
-            sensor.AddObservation(collectObservationsCallsForEpisode);
-        }
-
-        public override void OnActionReceived(float[] vectorAction)
-        {
-            agentActionCalls += 1;
-            agentActionCallsForEpisode += 1;
-            AddReward(0.1f);
-        }
-
-        public override void OnEpisodeBegin()
-        {
-            agentOnEpisodeBeginCalls += 1;
-            collectObservationsCallsForEpisode = 0;
-            agentActionCallsForEpisode = 0;
-        }
-
-        public override void Heuristic(float[] actionsOut)
-        {
-            var obs = GetObservations();
-            actionsOut[0] = obs[0];
-            heuristicCalls++;
-        }
-    }
-
-    public class TestSensor : ISensor
-    {
-        public string sensorName;
-        public int numWriteCalls;
-        public int numCompressedCalls;
-        public int numResetCalls;
-        public SensorCompressionType compressionType = SensorCompressionType.None;
-
-        public TestSensor(string n)
-        {
-            sensorName = n;
-        }
-
-        public int[] GetObservationShape()
-        {
-            return new[] { 0 };
-        }
-
-        public int Write(ObservationWriter writer)
-        {
-            numWriteCalls++;
-            // No-op
-            return 0;
-        }
-
-        public byte[] GetCompressedObservation()
-        {
-            numCompressedCalls++;
-            return new byte[] { 0 };
-        }
-
-        public SensorCompressionType GetCompressionType()
-        {
-            return compressionType;
-        }
-
-        public string GetName()
-        {
-            return sensorName;
-        }
-
-        public void Update() {}
-
-        public void Reset()
-        {
-            numResetCalls++;
-        }
-    }
-
     [TestFixture]
     public class EditModeTestGeneration
     {
@@ -215,9 +72,9 @@ namespace Unity.MLAgents.Tests
             Assert.AreEqual(0, aca.EpisodeCount);
             Assert.AreEqual(0, aca.StepCount);
             Assert.AreEqual(0, aca.TotalStepCount);
-            Assert.AreNotEqual(null, SideChannelsManager.GetSideChannel<EnvironmentParametersChannel>());
-            Assert.AreNotEqual(null, SideChannelsManager.GetSideChannel<EngineConfigurationChannel>());
-            Assert.AreNotEqual(null, SideChannelsManager.GetSideChannel<StatsSideChannel>());
+            Assert.AreNotEqual(null, SideChannelManager.GetSideChannel<EnvironmentParametersChannel>());
+            Assert.AreNotEqual(null, SideChannelManager.GetSideChannel<EngineConfigurationChannel>());
+            Assert.AreNotEqual(null, SideChannelManager.GetSideChannel<StatsSideChannel>());
 
             // Check that Dispose is idempotent
             aca.Dispose();
@@ -228,15 +85,15 @@ namespace Unity.MLAgents.Tests
         [Test]
         public void TestAcademyDispose()
         {
-            var envParams1 = SideChannelsManager.GetSideChannel<EnvironmentParametersChannel>();
-            var engineParams1 = SideChannelsManager.GetSideChannel<EngineConfigurationChannel>();
-            var statsParams1 = SideChannelsManager.GetSideChannel<StatsSideChannel>();
+            var envParams1 = SideChannelManager.GetSideChannel<EnvironmentParametersChannel>();
+            var engineParams1 = SideChannelManager.GetSideChannel<EngineConfigurationChannel>();
+            var statsParams1 = SideChannelManager.GetSideChannel<StatsSideChannel>();
             Academy.Instance.Dispose();
 
             Academy.Instance.LazyInitialize();
-            var envParams2 = SideChannelsManager.GetSideChannel<EnvironmentParametersChannel>();
-            var engineParams2 = SideChannelsManager.GetSideChannel<EngineConfigurationChannel>();
-            var statsParams2 = SideChannelsManager.GetSideChannel<StatsSideChannel>();
+            var envParams2 = SideChannelManager.GetSideChannel<EnvironmentParametersChannel>();
+            var engineParams2 = SideChannelManager.GetSideChannel<EngineConfigurationChannel>();
+            var statsParams2 = SideChannelManager.GetSideChannel<StatsSideChannel>();
             Academy.Instance.Dispose();
 
             Assert.AreNotEqual(envParams1, envParams2);
@@ -335,9 +192,13 @@ namespace Unity.MLAgents.Tests
         public void TestAgent()
         {
             var agentGo1 = new GameObject("TestAgent");
+            var bp1 = agentGo1.AddComponent<BehaviorParameters>();
+            bp1.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo1.AddComponent<TestAgent>();
             var agent1 = agentGo1.GetComponent<TestAgent>();
             var agentGo2 = new GameObject("TestAgent");
+            var bp2 = agentGo2.AddComponent<BehaviorParameters>();
+            bp2.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo2.AddComponent<TestAgent>();
             var agent2 = agentGo2.GetComponent<TestAgent>();
 
@@ -426,6 +287,7 @@ namespace Unity.MLAgents.Tests
                 Assert.AreEqual(stepsSinceReset, aca.StepCount);
                 Assert.AreEqual(numberReset, aca.EpisodeCount);
                 Assert.AreEqual(i, aca.TotalStepCount);
+
                 // Academy resets at the first step
                 if (i == 0)
                 {
@@ -441,9 +303,13 @@ namespace Unity.MLAgents.Tests
         public void TestAgent()
         {
             var agentGo1 = new GameObject("TestAgent");
+            var bp1 = agentGo1.AddComponent<BehaviorParameters>();
+            bp1.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo1.AddComponent<TestAgent>();
             var agent1 = agentGo1.GetComponent<TestAgent>();
             var agentGo2 = new GameObject("TestAgent");
+            var bp2 = agentGo2.AddComponent<BehaviorParameters>();
+            bp2.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo2.AddComponent<TestAgent>();
             var agent2 = agentGo2.GetComponent<TestAgent>();
 
@@ -475,6 +341,7 @@ namespace Unity.MLAgents.Tests
                     numberAcaReset += 1;
                     numberAgent2Episodes += 1;
                 }
+
                 //Agent 1 is only initialized at step 2
                 if (i == 2)
                 {
@@ -483,6 +350,7 @@ namespace Unity.MLAgents.Tests
                     numberAgent1Episodes += 1;
                     Assert.AreEqual(numberAgent1Episodes, agent1.agentOnEpisodeBeginCalls);
                 }
+
                 // Set agent 1 to done every 11 steps to test behavior
                 if (i % 11 == 5)
                 {
@@ -491,6 +359,7 @@ namespace Unity.MLAgents.Tests
                     numberAgent1Episodes += 1;
                     Assert.AreEqual(numberAgent1Episodes, agent1.agentOnEpisodeBeginCalls);
                 }
+
                 // Ending the episode for agent 2 regularly
                 if (i % 13 == 3)
                 {
@@ -500,6 +369,7 @@ namespace Unity.MLAgents.Tests
                     agent2StepForEpisode = 0;
                     Assert.AreEqual(numberAgent2Episodes, agent2.agentOnEpisodeBeginCalls);
                 }
+
                 // Request a decision for agent 2 regularly
                 if (i % 3 == 2)
                 {
@@ -515,41 +385,6 @@ namespace Unity.MLAgents.Tests
                 agent2StepForEpisode += 1;
                 aca.EnvironmentStep();
             }
-        }
-
-        [Test]
-        public void AssertStackingReset()
-        {
-            var agentGo1 = new GameObject("TestAgent");
-            agentGo1.AddComponent<TestAgent>();
-            var behaviorParameters = agentGo1.GetComponent<BehaviorParameters>();
-            behaviorParameters.BrainParameters.NumStackedVectorObservations = 3;
-            var agent1 = agentGo1.GetComponent<TestAgent>();
-            var aca = Academy.Instance;
-            agent1.LazyInitialize();
-            var policy = new TestPolicy();
-            agent1.SetPolicy(policy);
-
-            StackingSensor sensor = null;
-            foreach (ISensor s in agent1.sensors)
-            {
-                if (s is  StackingSensor)
-                {
-                    sensor = s as StackingSensor;
-                }
-            }
-
-            Assert.NotNull(sensor);
-
-            for (int i = 0; i < 20; i++)
-            {
-                agent1.RequestDecision();
-                aca.EnvironmentStep();
-            }
-
-            policy.OnRequestDecision = () =>  SensorTestHelper.CompareObservation(sensor, new[] {18f, 19f, 21f});
-            agent1.EndEpisode();
-            SensorTestHelper.CompareObservation(sensor, new[] {0f, 0f, 0f});
         }
     }
 
@@ -569,11 +404,13 @@ namespace Unity.MLAgents.Tests
         public void TestCumulativeReward()
         {
             var agentGo1 = new GameObject("TestAgent");
-            agentGo1.AddComponent<TestAgent>();
-            var agent1 = agentGo1.GetComponent<TestAgent>();
+            var bp1 = agentGo1.AddComponent<BehaviorParameters>();
+            bp1.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
+            var agent1 = agentGo1.AddComponent<TestAgent>();
             var agentGo2 = new GameObject("TestAgent");
-            agentGo2.AddComponent<TestAgent>();
-            var agent2 = agentGo2.GetComponent<TestAgent>();
+            var bp2 = agentGo2.AddComponent<BehaviorParameters>();
+            bp2.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
+            var agent2 = agentGo2.AddComponent<TestAgent>();
             var aca = Academy.Instance;
 
             var decisionRequester = agent1.gameObject.AddComponent<DecisionRequester>();
@@ -609,6 +446,8 @@ namespace Unity.MLAgents.Tests
         public void TestMaxStepsReset()
         {
             var agentGo1 = new GameObject("TestAgent");
+            var bp1 = agentGo1.AddComponent<BehaviorParameters>();
+            bp1.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo1.AddComponent<TestAgent>();
             var agent1 = agentGo1.GetComponent<TestAgent>();
             var aca = Academy.Instance;
@@ -672,6 +511,8 @@ namespace Unity.MLAgents.Tests
         {
             // Make sure that Agents with HeuristicPolicies step their sensors each Academy step.
             var agentGo1 = new GameObject("TestAgent");
+            var bp1 = agentGo1.AddComponent<BehaviorParameters>();
+            bp1.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(1);
             agentGo1.AddComponent<TestAgent>();
             var agent1 = agentGo1.GetComponent<TestAgent>();
             var aca = Academy.Instance;
@@ -692,8 +533,48 @@ namespace Unity.MLAgents.Tests
             Assert.AreEqual(numSteps, agent1.sensor1.numWriteCalls);
             Assert.AreEqual(numSteps, agent1.sensor2.numCompressedCalls);
 
-            // Make sure the Heuristic method read the observation and set the action
-            Assert.AreEqual(agent1.collectObservationsCallsForEpisode, agent1.GetAction()[0]);
+            Assert.AreEqual(
+                agent1.collectObservationsCallsForEpisode,
+                agent1.GetStoredActionBuffers().ContinuousActions[0]
+            );
+        }
+
+        [Test]
+        public void TestNullList()
+        {
+            var nullList = new HeuristicPolicy.NullList();
+            Assert.Throws<NotImplementedException>(() =>
+            {
+                _ = ((IEnumerable<float>)nullList).GetEnumerator();
+            });
+
+            Assert.Throws<NotImplementedException>(() =>
+            {
+                _ = ((IEnumerable)nullList).GetEnumerator();
+            });
+
+            Assert.Throws<NotImplementedException>(() =>
+            {
+                nullList.CopyTo(new[] { 0f }, 0);
+            });
+
+            nullList.Add(0);
+            Assert.IsTrue(nullList.Count == 0);
+
+            nullList.Clear();
+            Assert.IsTrue(nullList.Count == 0);
+
+            nullList.Add(0);
+            Assert.IsFalse(nullList.Contains(0));
+            Assert.IsFalse(nullList.Remove(0));
+            Assert.IsFalse(nullList.IsReadOnly);
+            Assert.IsTrue(nullList.IndexOf(0) == -1);
+            nullList.Insert(0, 0);
+            Assert.IsFalse(nullList.Count > 0);
+            nullList.RemoveAt(0);
+            Assert.IsTrue(nullList.Count == 0);
+            Assert.IsTrue(Mathf.Approximately(0f, nullList[0]));
+            Assert.IsTrue(Mathf.Approximately(0f, nullList[1]));
         }
     }
 
@@ -783,7 +664,7 @@ namespace Unity.MLAgents.Tests
                 (ObservableAttributeOptions.ExamineAll, 2)
             };
 
-            foreach (var(behavior, expectedNumSensors) in variants)
+            foreach (var (behavior, expectedNumSensors) in variants)
             {
                 var go = new GameObject();
                 var agent = go.AddComponent<DerivedObservableAgent>();
@@ -800,6 +681,62 @@ namespace Unity.MLAgents.Tests
                 }
                 Assert.AreEqual(expectedNumSensors, numAttributeSensors);
             }
+        }
+    }
+
+    [TestFixture]
+    public class AgentRecursionTests
+    {
+        [SetUp]
+        public void SetUp()
+        {
+            if (Academy.IsInitialized)
+            {
+                Academy.Instance.Dispose();
+            }
+        }
+
+        class CollectObsEndEpisodeAgent : Agent
+        {
+            public override void CollectObservations(VectorSensor sensor)
+            {
+                // NEVER DO THIS IN REAL CODE!
+                EndEpisode();
+            }
+        }
+
+        class OnEpisodeBeginEndEpisodeAgent : Agent
+        {
+            public override void OnEpisodeBegin()
+            {
+                // NEVER DO THIS IN REAL CODE!
+                EndEpisode();
+            }
+        }
+
+        void TestRecursiveThrows<T>() where T : Agent
+        {
+            var gameObj = new GameObject();
+            var agent = gameObj.AddComponent<T>();
+            agent.LazyInitialize();
+            agent.RequestDecision();
+
+            Assert.Throws<UnityAgentsException>(() =>
+            {
+                Academy.Instance.EnvironmentStep();
+            });
+        }
+
+        [Test]
+        public void TestRecursiveCollectObsEndEpisodeThrows()
+        {
+            TestRecursiveThrows<CollectObsEndEpisodeAgent>();
+        }
+
+        [Test]
+        public void TestRecursiveOnEpisodeBeginEndEpisodeThrows()
+        {
+            TestRecursiveThrows<OnEpisodeBeginEndEpisodeAgent>();
         }
     }
 }

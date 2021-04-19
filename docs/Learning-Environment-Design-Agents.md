@@ -17,9 +17,13 @@
     - [Visual Observation Summary & Best Practices](#visual-observation-summary--best-practices)
   - [Raycast Observations](#raycast-observations)
     - [RayCast Observation Summary & Best Practices](#raycast-observation-summary--best-practices)
-- [Actions](#actions)
-  - [Continuous Action Space](#continuous-action-space)
-  - [Discrete Action Space](#discrete-action-space)
+  - [Variable Length Observations](#variable-length-observations)
+    - [Variable Length Observation Summary & Best Practices](#variable-length-observation-summary--best-practices)
+  - [Goal Signal](#goal-signal)
+    - [Goal Signal Summary & Best Practices](#goal-signal-summary--best-practices)
+- [Actions and Actuators](#actions-and-actuators)
+  - [Continuous Actions](#continuous-actions)
+  - [Discrete Actions](#discrete-actions)
     - [Masking Discrete Actions](#masking-discrete-actions)
   - [Actions Summary & Best Practices](#actions-summary--best-practices)
 - [Rewards](#rewards)
@@ -27,7 +31,9 @@
   - [Rewards Summary & Best Practices](#rewards-summary--best-practices)
 - [Agent Properties](#agent-properties)
 - [Destroying an Agent](#destroying-an-agent)
-- [Defining Teams for Multi-agent Scenarios](#defining-teams-for-multi-agent-scenarios)
+- [Defining Multi-agent Scenarios](#defining-multi-agent-scenarios)
+  - [Teams for Adversarial Scenarios](#teams-for-adversarial-scenarios)
+  - [Groups for Cooperative Scenarios](#groups-for-cooperative-scenarios)
 - [Recording Demonstrations](#recording-demonstrations)
 
 An agent is an entity that can observe its environment, decide on the best
@@ -67,7 +73,9 @@ includes implementing the following methods:
 - `Agent.Heuristic()` - When the `Behavior Type` is set to `Heuristic Only` in
   the Behavior Parameters of the Agent, the Agent will use the `Heuristic()`
   method to generate the actions of the Agent. As such, the `Heuristic()` method
-  writes to a provided array of floats.
+  writes to the array of floats provided to the Heuristic method as argument.
+  __Note__: Do not create a new float array of action in the `Heuristic()` method,
+  as this will prevent writing floats to the original action array.
 
 As a concrete example, here is how the Ball3DAgent class implements these methods:
 
@@ -81,7 +89,7 @@ As a concrete example, here is how the Ball3DAgent class implements these method
   method calls `VectorSensor.AddObservation()` such that vector size adds up to 8,
   the Behavior Parameters of the Agent are set with vector observation space
   with a state size of 8.
-- `Agent.OnActionReceived()` — The vector action spaces result
+- `Agent.OnActionReceived()` — The action results
   in a small change in the agent cube's rotation at each step. In this example,
   an Agent receives a small positive reward for each step it keeps the ball on the
   agent cube's head and a larger, negative reward for dropping the ball. An
@@ -171,17 +179,20 @@ to equal the number of floats that are written by `CollectObservations()`.
 #### Observable Fields and Properties
 Another approach is to define the relevant observations as fields or properties
 on your Agent class, and annotate them with an `ObservableAttribute`. For
-example, in the 3DBall example above, the rigid body velocity could be observed
+example, in the Ball3DHardAgent, the difference between positions could be observed
 by adding a property to the Agent:
 ```csharp
 using Unity.MLAgents.Sensors.Reflection;
 
-public class Ball3DAgent : Agent {
+public class Ball3DHardAgent : Agent {
 
-    [Observable]
-    public Vector3 RigidBodyVelocity
+    [Observable(numStackedObservations: 9)]
+    Vector3 PositionDelta
     {
-        get { return m_BallRb.velocity;  }
+        get
+        {
+            return ball.transform.position - gameObject.transform.position;
+        }
     }
 }
 ```
@@ -505,23 +516,94 @@ setting the State Size.
 - Use as few rays and tags as necessary to solve the problem in order to improve
   learning stability and agent performance.
 
-## Actions
+### Variable Length Observations
+
+It is possible for agents to collect observations from a varying number of
+GameObjects by using a `BufferSensor`.
+You can add a `BufferSensor` to your Agent by adding a `BufferSensorComponent` to
+its GameObject.
+The `BufferSensor` can be useful in situations in which the Agent must pay
+attention to a varying number of entities (for example, a varying number of
+enemies or projectiles).
+On the trainer side, the `BufferSensor`
+is processed using an attention module. More information about attention
+mechanisms can be found [here](https://arxiv.org/abs/1706.03762). Training or
+doing inference with variable length observations can be slower than using
+a flat vector observation. However, attention mechanisms enable solving
+problems that require comparative reasoning between entities in a scene
+such as our [Sorter environment](Learning-Environment-Examples.md#sorter).
+Note that even though the `BufferSensor` can process a variable number of
+entities, you still need to define a maximum number of entities. This is
+because our network architecture requires to know what the shape of the
+observations will be. If fewer entities are observed than the maximum, the
+observation will be padded with zeros and the trainer will ignore
+the padded observations. Note that attention layers are invariant to
+the order of the entities, so there is no need to properly "order" the
+entities before feeding them into the `BufferSensor`.
+
+The `BufferSensorComponent` Editor inspector has two arguments:
+ - `Observation Size` : This is how many floats each entities will be
+ represented with. This number is fixed and all entities must
+ have the same representation. For example, if the entities you want to
+ put into the `BufferSensor` have for relevant information position and
+ speed, then the `Observation Size` should be 6 floats.
+ - `Maximum Number of Entities` : This is the maximum number of entities
+ the `BufferSensor` will be able to collect.
+
+To add an entity's observations to a `BufferSensorComponent`, you need
+to call `BufferSensorComponent.AppendObservation()`
+with a float array of size `Observation Size` as argument.
+
+__Note__: Currently, the observations put into the `BufferSensor` are
+not normalized, you will need to normalize your observations manually
+between -1 and 1.
+
+#### Variable Length Observation Summary & Best Practices
+ - Attach `BufferSensorComponent` to use.
+ - Call `BufferSensorComponent.AppendObservation()` to add the observations
+ of an entity to the `BufferSensor`.
+ - Normalize the entities observations before feeding them into the `BufferSensor`.
+
+### Goal Signal
+
+It is possible for agents to collect observations that will be treated as "goal signal".
+A goal signal is used to condition the policy of the agent, meaning that if the goal
+changes, the policy (i.e. the mapping from observations to actions) will change
+as well. Note that this is true
+for any observation since all observations influence the policy of the Agent to
+some degree. But by specifying a goal signal explicitly, we can make this conditioning
+more important to the agent. This feature can be used in settings where an agent
+must learn to solve different tasks that are similar by some aspects because the
+agent will learn to reuse learnings from different tasks to generalize better.
+In Unity, you can specify that a `VectorSensor` or
+a `CameraSensor` is a goal by attaching a `VectorSensorComponent` or a
+`CameraSensorComponent` to the Agent and selecting `Goal Signal` as `Observation Type`.
+On the trainer side, there are two different ways to condition the policy. This
+setting is determined by the
+[conditioning_type parameter](Training-Configuration-File.md#common-trainer-configurations).
+If set to `hyper` (default) a [HyperNetwork](https://arxiv.org/pdf/1609.09106.pdf)
+will be used to generate some of the
+weights of the policy using the goal observations as input. Note that using a
+HyperNetwork requires a lot of computations, it is recommended to use a smaller
+number of hidden units in the policy to alleviate this.
+If set to `none` the goal signal will be considered as regular observations.
+For an example on how to use a goal signal, see the
+[GridWorld example](Learning-Environment-Examples.md#gridworld).
+
+#### Goal Signal Summary & Best Practices
+ - Attach a `VectorSensorComponent` or `CameraSensorComponent` to an agent and
+ set the observation type to goal to use the feature.
+ - Set the conditioning_type parameter in the training configuration.
+ - Reduce the number of hidden units in the network when using the HyperNetwork
+ conditioning type.
+
+## Actions and Actuators
 
 An action is an instruction from the Policy that the agent carries out. The
-action is passed to the Agent as a parameter when the Academy invokes the
-agent's `OnActionReceived()` function. Actions for an agent can take one of two
-forms, either **Continuous** or **Discrete**.
-
-When you specify that the vector action space is **Continuous**, the action
-parameter passed to the Agent is an array of floating point numbers with length
-equal to the `Vector Action Space Size` property. When you specify a
-**Discrete** vector action space type, the action parameter is an array
-containing integers. Each integer is an index into a list or table of commands.
-In the **Discrete** vector action space type, the action parameter is an array
-of indices. The number of indices in the array is determined by the number of
-branches defined in the `Branches Size` property. Each branch corresponds to an
-action table, you can specify the size of each table by modifying the `Branches`
-property.
+action is passed to the an `IActionReceiver` (either an `Agent` or an `IActuator`)
+as the `ActionBuffers` parameter when the Academy invokes the
+`IActionReciever.OnActionReceived()` function.
+There are two types of actions supported: **Continuous** and **Discrete**.
 
 Neither the Policy nor the training algorithm know anything about what the
 action values themselves mean. The training algorithm simply tries different
@@ -530,65 +612,61 @@ over time and many training episodes. Thus, the only place actions are defined
 for an Agent is in the `OnActionReceived()` function.
 
 For example, if you designed an agent to move in two dimensions, you could use
-either continuous or the discrete vector actions. In the continuous case, you
-would set the vector action size to two (one for each dimension), and the
-agent's Policy would create an action with two floating point values. In the
+either continuous or the discrete actions. In the continuous case, you
+would set the action size to two (one for each dimension), and the
+agent's Policy would output an action with two floating point values. In the
 discrete case, you would use one Branch with a size of four (one for each
 direction), and the Policy would create an action array containing a single
 element with a value ranging from zero to three. Alternatively, you could create
 two branches of size two (one for horizontal movement and one for vertical
-movement), and the Policy would create an action array containing two elements
-with values ranging from zero to one.
+movement), and the Policy would output an action array containing two elements
+with values ranging from zero to one. You could alternatively use a combination of continuous
+and discrete actions e.g., using one continuous action for horizontal movement
+and a discrete branch of size two for the vertical movement.
 
 Note that when you are programming actions for an agent, it is often helpful to
 test your action logic using the `Heuristic()` method of the Agent, which lets
 you map keyboard commands to actions.
 
-The [3DBall](Learning-Environment-Examples.md#3dball-3d-balance-ball) and
-[Area](Learning-Environment-Examples.md#push-block) example environments are set
-up to use either the continuous or the discrete vector action spaces.
+### Continuous Actions
 
-### Continuous Action Space
-
-When an Agent uses a Policy set to the **Continuous** vector action space, the
-action parameter passed to the Agent's `OnActionReceived()` function is an array
-with length equal to the `Vector Action Space Size` property value. The
+When an Agent's Policy has **Continuous** actions, the
+`ActionBuffers.ContinuousActions` passed to the Agent's `OnActionReceived()` function
+is an array with length equal to the `Continuous Action Size` property value. The
 individual values in the array have whatever meanings that you ascribe to them.
 If you assign an element in the array as the speed of an Agent, for example, the
 training process learns to control the speed of the Agent through this
 parameter.
 
-The [Reacher example](Learning-Environment-Examples.md#reacher) defines a
-continuous action space with four control values.
+The [3DBall example](Learning-Environment-Examples.md#3dball-3d-balance-ball) uses
+continuous actions with four control values.
 
-![reacher](images/reacher.png)
+![3DBall](images/balance.png)
 
-These control values are applied as torques to the bodies making up the arm:
+These control values are applied as rotation to the cube:
 
 ```csharp
-public override void OnActionReceived(float[] act)
-{
-    float torque_x = Mathf.Clamp(act[0], -1, 1) * 100f;
-    float torque_z = Mathf.Clamp(act[1], -1, 1) * 100f;
-    rbA.AddTorque(new Vector3(torque_x, 0f, torque_z));
+    public override void OnActionReceived(ActionBuffers actionBuffers)
+    {
+        var actionZ = 2f * Mathf.Clamp(actionBuffers.ContinuousActions[0], -1f, 1f);
+        var actionX = 2f * Mathf.Clamp(actionBuffers.ContinuousActions[1], -1f, 1f);
 
-    torque_x = Mathf.Clamp(act[2], -1, 1) * 100f;
-    torque_z = Mathf.Clamp(act[3], -1, 1) * 100f;
-    rbB.AddTorque(new Vector3(torque_x, 0f, torque_z));
-}
+        gameObject.transform.Rotate(new Vector3(0, 0, 1), actionZ);
+        gameObject.transform.Rotate(new Vector3(1, 0, 0), actionX);
+    }
 ```
 
 By default the output from our provided PPO algorithm pre-clamps the values of
-`vectorAction` into the [-1, 1] range. It is a best practice to manually clip
+`ActionBuffers.ContinuousActions` into the [-1, 1] range. It is a best practice to manually clip
 these as well, if you plan to use a 3rd party algorithm with your environment.
 As shown above, you can scale the control values as needed after clamping them.
 
-### Discrete Action Space
+### Discrete Actions
 
-When an Agent uses a **Discrete** vector action space, the action parameter
-passed to the Agent's `OnActionReceived()` function is an array containing
-indices. With the discrete vector action space, `Branches` is an array of
-integers, each value corresponds to the number of possibilities for each branch.
+When an Agent's Policy uses **discrete** actions, the
+`ActionBuffers.DiscreteActions` passed to the Agent's `OnActionReceived()` function
+is an array of integers with length equal to `Discrete Branch Size`. When defining the discrete actions, `Branches`
+is an array of integers, each value corresponds to the number of possibilities for each branch.
 
 For example, if we wanted an Agent that can move in a plane and jump, we could
 define two branches (one for motion and one for jumping) because we want our
@@ -599,9 +677,9 @@ and the second one to have 2 possible actions (don't jump, jump). The
 
 ```csharp
 // Get the action index for movement
-int movement = Mathf.FloorToInt(act[0]);
+int movement = actionBuffers.DiscreteActions[0];
 // Get the action index for jumping
-int jump = Mathf.FloorToInt(act[1]);
+int jump = actionBuffers.DiscreteActions[1];
 
 // Look up the index in the movement action list:
 if (movement == 1) { directionX = -1; }
@@ -617,60 +695,82 @@ gameObject.GetComponent<Rigidbody>().AddForce(
         directionX * 40f, directionY * 300f, directionZ * 40f));
 ```
 
-Note that the above code example is a simplified extract from the AreaAgent
-class, which provides alternate implementations for both the discrete and the
-continuous action spaces.
-
 #### Masking Discrete Actions
 
 When using Discrete Actions, it is possible to specify that some actions are
 impossible for the next decision. When the Agent is controlled by a neural
 network, the Agent will be unable to perform the specified action. Note that
 when the Agent is controlled by its Heuristic, the Agent will still be able to
-decide to perform the masked action. In order to mask an action, override the
-`Agent.CollectDiscreteActionMasks()` virtual method, and call
-`DiscreteActionMasker.SetMask()` in it:
+decide to perform the masked action. In order to disallow an action, override
+the `Agent.WriteDiscreteActionMask()` virtual method, and call
+`SetActionEnabled()` on the provided `IDiscreteActionMask`:
 
 ```csharp
-public override void CollectDiscreteActionMasks(DiscreteActionMasker actionMasker){
-    actionMasker.SetMask(branch, actionIndices)
+public override void WriteDiscreteActionMask(IDiscreteActionMask actionMask)
+{
+    actionMask.SetActionEnabled(branch, actionIndex, isEnabled);
 }
 ```
 
 Where:
 
-- `branch` is the index (starting at 0) of the branch on which you want to mask
-  the action
-- `actionIndices` is a list of `int` corresponding to the indices of the actions
-  that the Agent cannot perform.
+- `branch` is the index (starting at 0) of the branch on which you want to
+allow or disallow the action
+- `actionIndex` is the index of the action that you want to allow or disallow.
+- `isEnabled` is a bool indicating whether the action should be allowed or now.
 
 For example, if you have an Agent with 2 branches and on the first branch
 (branch 0) there are 4 possible actions : _"do nothing"_, _"jump"_, _"shoot"_
 and _"change weapon"_. Then with the code bellow, the Agent will either _"do
-nothing"_ or _"change weapon"_ for his next decision (since action index 1 and 2
+nothing"_ or _"change weapon"_ for their next decision (since action index 1 and 2
 are masked)
 
 ```csharp
-SetMask(0, new int[2]{1,2})
+actionMask.SetActionEnabled(0, 1, false);
+actionMask.SetActionEnabled(0, 2, false);
 ```
 
 Notes:
 
-- You can call `SetMask` multiple times if you want to put masks on multiple
+- You can call `SetActionEnabled` multiple times if you want to put masks on multiple
   branches.
+- At each step, the state of an action is reset and enabled by default.
 - You cannot mask all the actions of a branch.
 - You cannot mask actions in continuous control.
 
+
+### IActuator interface and ActuatorComponents
+The Actuator API allows users to abstract behavior out of Agents and in to
+components (similar to the ISensor API).  The `IActuator` interface and `Agent`
+class both implement the `IActionReceiver` interface to allow for backward compatibility
+with the current `Agent.OnActionReceived`.
+This means you will not have to change your code until you decide to use the `IActuator` API.
+
+Like the `ISensor` interface, the `IActuator` interface is intended for advanced users.
+
+The `ActuatorComponent` abstract class is used to create the actual `IActuator` at
+runtime. It must be attached to the same `GameObject` as the `Agent`, or to a
+child `GameObject`.  Actuators and all of their data structures are initialized
+during `Agent.Initialize`.  This was done to prevent an unexpected allocations at runtime.
+
+You can find an example of an `IActuator` implementation in the `Basic` example scene.
+**NOTE**: you do not need to adjust the Actions in the Agent's
+`Behavior Parameters` when using an `IActuator` and `ActuatorComponents`.
+
+Internally, `Agent.OnActionReceived` uses an `IActuator` to send actions to the Agent,
+although this is mostly abstracted from the user.
+
+
 ### Actions Summary & Best Practices
 
-- Actions can either use `Discrete` or `Continuous` spaces.
-- When using `Discrete` it is possible to assign multiple action branches, and
-  to mask certain actions.
-- In general, smaller action spaces will make for easier learning.
-- Be sure to set the Vector Action's Space Size to the number of used Vector
-  Actions, and not greater, as doing the latter can interfere with the
+- Agents can use `Discrete` and/or `Continuous` actions.
+- Discrete actions can have multiple action branches, and it's possible to mask
+  certain actions so that they won't be taken.
+- In general, fewer actions will make for easier learning.
+- Be sure to set the Continuous Action Size and Discrete Branch Size to the desired
+  number for each type of action, and not greater, as doing the latter can interfere with the
   efficiency of the training process.
-- When using continuous control, action values should be clipped to an
+- Continuous action values should be clipped to an
   appropriate range. The provided PPO model automatically clips these values
   between -1 and 1, but third party training systems may not do so.
 
@@ -717,7 +817,7 @@ if (hitObjects.Where(col => col.gameObject.tag == "goal").ToArray().Length == 1)
     AddReward(1.0f);
     EndEpisode();
 }
-if (hitObjects.Where(col => col.gameObject.tag == "pit").ToArray().Length == 1)
+else if (hitObjects.Where(col => col.gameObject.tag == "pit").ToArray().Length == 1)
 {
     AddReward(-1f);
     EndEpisode();
@@ -809,13 +909,12 @@ be called independently of the `Max Step` property.
       be stacked and used collectively for decision making. This results in the
       effective size of the vector observation being passed to the Policy being:
       _Space Size_ x _Stacked Vectors_.
-  - `Vector Action`
-    - `Space Type` - Corresponds to whether action vector contains a single
-      integer (Discrete) or a series of real-valued floats (Continuous).
-    - `Space Size` (Continuous) - Length of action vector.
-    - `Branches` (Discrete) - An array of integers, defines multiple concurrent
-      discrete actions. The values in the `Branches` array correspond to the
-      number of possible discrete values for each action branch.
+  - `Actions`
+    - `Continuous Actions` - The number of concurrent continuous actions that
+     the Agent can take.
+    - `Discrete Branches` - An array of integers, defines multiple concurrent
+      discrete actions. The values in the `Discrete Branches` array correspond
+      to the number of possible discrete values for each action branch.
   - `Model` - The neural network model used for inference (obtained after
     training)
   - `Inference Device` - Whether to use CPU or GPU to run the model during
@@ -839,7 +938,9 @@ is always at least one Agent training at all times by either spawning a new
 Agent every time one is destroyed or by re-spawning new Agents when the whole
 environment resets.
 
-## Defining Teams for Multi-agent Scenarios
+## Defining Multi-agent Scenarios
+
+### Teams for Adversarial Scenarios
 
 Self-play is triggered by including the self-play hyperparameter hierarchy in
 the [trainer configuration](Training-ML-Agents.md#training-configurations). To
@@ -866,6 +967,106 @@ provide examples of symmetric games. To train an asymmetric game, specify
 trainer configurations for each of your behavior names and include the self-play
 hyperparameter hierarchy in both.
 
+### Groups for Cooperative Scenarios
+
+Cooperative behavior in ML-Agents can be enabled by instantiating a `SimpleMultiAgentGroup`,
+typically in an environment controller or similar script, and adding agents to it
+using the `RegisterAgent(Agent agent)` method. Note that all agents added to the same `SimpleMultiAgentGroup`
+must have the same behavior name and Behavior Parameters. Using `SimpleMultiAgentGroup` enables the
+agents within a group to learn how to work together to achieve a common goal (i.e.,
+maximize a group-given reward), even if one or more of the group members are removed
+before the episode ends. You can then use this group to add/set rewards, end or interrupt episodes
+at a group level using the `AddGroupReward()`, `SetGroupReward()`, `EndGroupEpisode()`, and
+`GroupEpisodeInterrupted()` methods. For example:
+
+```csharp
+// Create a Multi Agent Group in Start() or Initialize()
+m_AgentGroup = new SimpleMultiAgentGroup();
+
+// Register agents in group at the beginning of an episode
+for (var agent in AgentList)
+{
+  m_AgentGroup.RegisterAgent(agent);
+}
+
+// if the team scores a goal
+m_AgentGroup.AddGroupReward(rewardForGoal);
+
+// If the goal is reached and the episode is over
+m_AgentGroup.EndGroupEpisode();
+ResetScene();
+
+// If time ran out and we need to interrupt the episode
+m_AgentGroup.GroupEpisodeInterrupted();
+ResetScene();
+```
+
+Multi Agent Groups should be used with the MA-POCA trainer, which is explicitly designed to train
+cooperative environments. This can be enabled by using the `poca` trainer - see the
+[training configurations](Training-Configuration-File.md) doc for more information on
+configuring MA-POCA. When using MA-POCA, agents which are deactivated or removed from the Scene
+during the episode will still learn to contribute to the group's long term rewards, even
+if they are not active in the scene to experience them.
+
+See the [Cooperative Push Block](Learning-Environment-Examples.md#cooperative-push-block) environment
+for an example of how to use Multi Agent Groups, and the
+[Dungeon Escape](Learning-Environment-Examples.md#dungeon-escape) environment for an example of
+how the Multi Agent Group can be used with agents that are removed from the scene mid-episode.
+
+**NOTE**: Groups differ from Teams (for competitive settings) in the following way - Agents
+working together should be added to the same Group, while agents playing against each other
+should be given different Team Ids. If in the Scene there is one playing field and two teams,
+there should be two Groups, one for each team, and each team should be assigned a different
+Team Id. If this playing field is duplicated many times in the Scene (e.g. for training
+speedup), there should be two Groups _per playing field_, and two unique Team Ids
+_for the entire Scene_. In environments with both Groups and Team Ids configured, MA-POCA and
+self-play can be used together for training. In the diagram below, there are two agents on each team,
+and two playing fields where teams are pitted against each other. All the blue agents should share a Team Id
+(and the orange ones a different ID), and there should be four group managers, one per pair of agents.
+
+<p align="center">
+  <img src="images/groupmanager_teamid.png"
+       alt="Group Manager vs Team Id"
+       width="650" border="10" />
+</p>
+
+Please see the [SoccerTwos](Learning-Environment-Examples.md#soccer-twos) environment for an example.
+
+#### Cooperative Behaviors Notes and Best Practices
+* An agent can only be registered to one MultiAgentGroup at a time. If you want to re-assign an
+agent from one group to another, you have to unregister it from the current group first.
+
+* Agents with different behavior names in the same group are not supported.
+
+* Agents within groups should always set the `Max Steps` parameter in the Agent script to 0.
+Instead, handle Max Steps using the MultiAgentGroup by ending the episode for the entire
+Group using `GroupEpisodeInterrupted()`.
+
+* `EndGroupEpisode` and `GroupEpisodeInterrupted` do the same job in the game, but has
+slightly different effect on the training. If the episode is completed, you would want to call
+`EndGroupEpisode`. But if the episode is not over but it has been running for enough steps, i.e.
+reaching max step, you would call `GroupEpisodeInterrupted`.
+
+* If an agent finished earlier, e.g. completed tasks/be removed/be killed in the game, do not call
+`EndEpisode()` on the Agent. Instead, disable the agent and re-enable it when the next episode starts,
+or destroy the agent entirely. This is because calling `EndEpisode()` will call `OnEpisodeBegin()`, which
+will reset the agent immediately. While it is possible to call `EndEpisode()` in this way, it is usually not the
+desired behavior when training groups of agents.
+
+* If an agent that was disabled in a scene needs to be re-enabled, it must be re-registered to the MultiAgentGroup.
+
+* Group rewards are meant to reinforce agents to act in the group's best interest instead of
+individual ones, and are treated differently than individual agent rewards during
+training. So calling `AddGroupReward()` is not equivalent to calling agent.AddReward() on each agent
+in the group.
+
+* You can still add incremental rewards to agents using `Agent.AddReward()` if they are
+in a Group. These rewards will only be given to those agents and are received when the
+Agent is active.
+
+* Environments which use Multi Agent Groups can be trained using PPO or SAC, but agents will
+not be able to learn from group rewards after deactivation/removal, nor will they behave as cooperatively.
+
 ## Recording Demonstrations
 
 In order to record demonstrations from an agent, add the
@@ -876,15 +1077,18 @@ will be recorded from the agent.
 <p align="center">
   <img src="images/demo_component.png"
        alt="Demonstration Recorder"
-       width="450" border="10" />
+       width="650" border="10" />
 </p>
 
 When `Record` is checked, a demonstration will be created whenever the scene is
 played from the Editor. Depending on the complexity of the task, anywhere from a
 few minutes or a few hours of demonstration data may be necessary to be useful
-for imitation learning. When you have recorded enough data, end the Editor play
-session. A `.demo` file will be created in the `Assets/Demonstrations` folder
-(by default). This file contains the demonstrations. Clicking on the file will
+for imitation learning. To specify an exact number of steps you want to record
+use the `Num Steps To Record` field and the editor will end your play session
+automatically once that many steps are recorded. If you set `Num Steps To Record`
+to `0` then recording will continue until you manually end the play session. Once
+the play session ends a `.demo` file will be created in the `Assets/Demonstrations`
+folder (by default). This file contains the demonstrations. Clicking on the file will
 provide metadata about the demonstration in the inspector.
 
 <p align="center">
@@ -893,4 +1097,5 @@ provide metadata about the demonstration in the inspector.
        width="375" border="10" />
 </p>
 
-You can then specify the path to this file in your training configurations.
+You can then specify the path to this file in your
+[training configurations](Training-Configuration-File.md#behavioral-cloning).

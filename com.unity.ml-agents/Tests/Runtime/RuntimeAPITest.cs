@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System.Collections;
 using System.Collections.Generic;
 using Unity.MLAgents;
@@ -6,6 +5,7 @@ using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 using Unity.MLAgents.Sensors.Reflection;
 using NUnit.Framework;
+using Unity.MLAgents.Actuators;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -18,7 +18,7 @@ namespace Tests
         [Observable]
         public float ObservableFloat;
 
-        public override void Heuristic(float[] actionsOut)
+        public override void Heuristic(in ActionBuffers actionsOut)
         {
             numHeuristicCalls++;
             base.Heuristic(actionsOut);
@@ -31,21 +31,16 @@ namespace Tests
         public SensorComponent wrappedComponent;
         public int numStacks;
 
-        public override ISensor CreateSensor()
+        public override ISensor[] CreateSensors()
         {
-            var wrappedSensor = wrappedComponent.CreateSensor();
-            return new StackingSensor(wrappedSensor, numStacks);
-        }
-
-        public override int[] GetObservationShape()
-        {
-            int[] shape = (int[])wrappedComponent.GetObservationShape().Clone();
-            for (var i = 0; i < shape.Length; i++)
+            var wrappedSensors = wrappedComponent.CreateSensors();
+            var sensorsOut = new ISensor[wrappedSensors.Length];
+            for (var i = 0; i < wrappedSensors.Length; i++)
             {
-                shape[i] *= numStacks;
+                sensorsOut[i] = new StackingSensor(wrappedSensors[i], numStacks);
             }
 
-            return shape;
+            return sensorsOut;
         }
     }
 
@@ -54,6 +49,10 @@ namespace Tests
         [SetUp]
         public static void Setup()
         {
+            if (Academy.IsInitialized)
+            {
+                Academy.Instance.Dispose();
+            }
             Academy.Instance.AutomaticSteppingEnabled = false;
         }
 
@@ -66,9 +65,8 @@ namespace Tests
             var behaviorParams = gameObject.AddComponent<BehaviorParameters>();
             behaviorParams.BrainParameters.VectorObservationSize = 3;
             behaviorParams.BrainParameters.NumStackedVectorObservations = 2;
-            behaviorParams.BrainParameters.VectorActionDescriptions = new[] { "TestActionA", "TestActionB" };
-            behaviorParams.BrainParameters.VectorActionSize = new[] { 2, 2 };
-            behaviorParams.BrainParameters.VectorActionSpaceType = SpaceType.Discrete;
+            behaviorParams.BrainParameters.VectorActionDescriptions = new[] { "Continuous1", "TestActionA", "TestActionB" };
+            behaviorParams.BrainParameters.ActionSpec = new ActionSpec(1, new[] { 2, 2 });
             behaviorParams.BehaviorName = "TestBehavior";
             behaviorParams.TeamId = 42;
             behaviorParams.UseChildSensors = true;
@@ -77,7 +75,7 @@ namespace Tests
 
             // Can't actually create an Agent with InferenceOnly and no model, so change back
             behaviorParams.BehaviorType = BehaviorType.Default;
-
+#if MLA_UNITY_PHYSICS_MODULE
             var sensorComponent = gameObject.AddComponent<RayPerceptionSensorComponent3D>();
             sensorComponent.SensorName = "ray3d";
             sensorComponent.DetectableTags = new List<string> { "Player", "Respawn" };
@@ -91,6 +89,7 @@ namespace Tests
 
             // ISensor isn't set up yet.
             Assert.IsNull(sensorComponent.RaySensor);
+#endif
 
 
             // Make sure we can set the behavior type correctly after the agent is initialized
@@ -105,10 +104,10 @@ namespace Tests
             decisionRequester.DecisionPeriod = 2;
             decisionRequester.TakeActionsBetweenDecisions = true;
 
-
+#if MLA_UNITY_PHYSICS_MODULE
             // Initialization should set up the sensors
             Assert.IsNotNull(sensorComponent.RaySensor);
-
+#endif
             // Let's change the inference device
             var otherDevice = behaviorParams.InferenceDevice == InferenceDevice.CPU ? InferenceDevice.GPU : InferenceDevice.CPU;
             agent.SetModel(behaviorParams.BehaviorName, behaviorParams.Model, otherDevice);
@@ -120,9 +119,9 @@ namespace Tests
 
             Academy.Instance.EnvironmentStep();
 
-            var actions = agent.GetAction();
+            var actions = agent.GetStoredActionBuffers().DiscreteActions;
             // default Heuristic implementation should return zero actions.
-            Assert.AreEqual(new[] {0.0f, 0.0f}, actions);
+            Assert.AreEqual(new ActionSegment<int>(new[] { 0, 0 }), actions);
             Assert.AreEqual(1, agent.numHeuristicCalls);
 
             Academy.Instance.EnvironmentStep();
@@ -133,4 +132,3 @@ namespace Tests
         }
     }
 }
-#endif

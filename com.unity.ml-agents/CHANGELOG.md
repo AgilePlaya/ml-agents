@@ -6,19 +6,417 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to
 [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
 
+## [2.0.0-exp.1] - 2021-04-22
+### Major Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The minimum supported Unity version was updated to 2019.4. (#5166)
+- Several breaking interface changes were made. See the
+[Migration Guide](https://github.com/Unity-Technologies/ml-agents/blob/release_14_docs/docs/Migrating.md) for more
+details.
+- Some methods previously marked as `Obsolete` have been removed. If you were using these methods, you need to replace them with their supported counterpart.
+- The interface for disabling discrete actions in `IDiscreteActionMask` has changed.
+`WriteMask(int branch, IEnumerable<int> actionIndices)` was replaced with
+`SetActionEnabled(int branch, int actionIndex, bool isEnabled)`. (#5060)
+- IActuator now implements IHeuristicProvider. (#5110)
+- `ISensor.GetObservationShape()` was removed, and `GetObservationSpec()` was added. The `ITypedSensor`
+and `IDimensionPropertiesSensor` interfaces were removed. (#5127)
+- `ISensor.GetCompressionType()` was removed, and `GetCompressionSpec()` was added. The `ISparseChannelSensor`
+interface was removed. (#5164)
+- The abstract method `SensorComponent.GetObservationShape()` was no longer being called, so it has been removed. (#5172)
+- `SensorComponent.CreateSensor()` was replaced with `SensorComponent.CreateSensors()`, which returns an `ISensor[]`. (#5181)
+- `Match3Sensor` was refactored to produce cell and special type observations separately, and `Match3SensorComponent` now
+produces two `Match3Sensor`s (unless there are no special types). Previously trained models will have different observation
+sizes and will need to be retrained. (#5181)
+- The `AbstractBoard` class for integration with Match-3 games was changed to make it easier to support boards with
+different sizes using the same model. For a summary of the interface changes, please see the Migration Guide. (##5189)
+- Updated the Barracuda package to version `1.3.3-preview`(#5236)
+- `GridSensor` has been refactored and moved to main package, with changes to both sensor interfaces and behaviors.
+Exsisting GridSensor created by extension package will not work in newer version. Previously trained models will
+need to be retrained. Please see the Migration Guide for more details. (#5256)
+- Models trained with 1.x versions of ML-Agents will no longer work at inference if they were trained using recurrent neural networks (#5254)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The `.onnx` models input names have changed. All input placeholders will now use the prefix `obs_` removing the distinction between visual and vector observations. In addition, the inputs and outputs of LSTM changed. Models created with this version will not be usable with previous versions of the package (#5080, #5236)
+- The `.onnx` models discrete action output now contains the discrete actions values and not the logits. Models created with this version will not be usable with previous versions of the package (#5080)
+- Added ML-Agents package settings. (#5027)
+- Make com.unity.modules.unityanalytics an optional dependency. (#5109)
+- Make com.unity.modules.physics and com.unity.modules.physics2d optional dependencies. (#5112)
+- The default `InferenceDevice` is now `InferenceDevice.Default`, which is equivalent to `InferenceDevice.Burst`. If you
+depend on the previous behavior, you can explicitly set the Agent's `InferenceDevice` to `InferenceDevice.CPU`. (#5175)
+- Added support for `Goal Signal` as a type of observation. Trainers can now use HyperNetworks to process `Goal Signal`. Trainers with HyperNetworks are more effective at solving multiple tasks. (#5142, #5159, #5149)
+- Modified the [GridWorld environment](https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Examples.md#gridworld) to use the new `Goal Signal` feature. (#5193)
+- `DecisionRequester.ShouldRequestDecision()` and `ShouldRequestAction()`methods were added. These are used to
+determine whether `Agent.RequestDecision()` and `Agent.RequestAction()` are called (respectively). (#5223)
+- `RaycastPerceptionSensor` now caches its raycast results; they can be accessed via `RayPerceptionSensor.RayPerceptionOutput`. (#5222)
+- `ActionBuffers` are now reset to zero before being passed to `Agent.Heuristic()` and
+`IHeuristicProvider.Heuristic()`. (#5227)
+- `Agent` will now call `IDisposable.Dispose()` on all `ISensor`s that implement the `IDisposable` interface. (#5233)
+- `CameraSensor`, `RenderTextureSensor`, and `Match3Sensor` will now reuse their `Texture2D`s, reducing the
+amount of memory that needs to be allocated during runtime. (#5233)
+- Optimzed `ObservationWriter.WriteTexture()` so that it doesn't call `Texture2D.GetPixels32()` for `RGB24` textures.
+This results in much less memory being allocated during inference with `CameraSensor` and `RenderTextureSensor`. (#5233)
+- The Match-3 integration utilities were moved from `com.unity.ml-agents.extensions` to `com.unity.ml-agents`. (#5259)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Some console output have been moved from `info` to `debug` and will not be printed by default. If you want all messages to be printed, you can run `mlagents-learn` with the `--debug` option or add the line `debug: true` at the top of the yaml config file. (#5211)
+- The embedding size of attention layers used when a BufferSensor is in the scene has been changed. It is now fixed to 128 units. It might be impossible to resume training from a checkpoint of a previous version. (#5272)
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Fixed a bug where sensors and actuators could get sorted inconsistently on different systems to different Culture
+settings. Unfortunately, this may require retraining models if it changes the resulting order of the sensors
+or actuators on your system. (#5194)
+- Removed additional memory allocations that were occurring due to assert messages and iterating of DemonstrationRecorders. (#5246)
+- Fixed a bug where agent trying to access unintialized fields when creating a new RayPerceptionSensorComponent on an agent. (#5261)
+- Fixed a bug where the DemonstrationRecorder would throw a null reference exception if Num Steps To Record was > 0 and Record was turned off. (#5274)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed a bug where --results-dir has no effect. (#5269)
+
+## [1.9.1-preview] - 2021-04-13
+### Major Changes
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The `--resume` flag now supports resuming experiments with additional reward providers or
+ loading partial models if the network architecture has changed. See
+ [here](https://github.com/Unity-Technologies/ml-agents/blob/release_16_docs/docs/Training-ML-Agents.md#loading-an-existing-model)
+ for more details. (#5213)
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Fixed erroneous warnings when using the Demonstration Recorder. (#5216)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed an issue which was causing increased variance when using LSTMs. Also fixed an issue with LSTM when used with POCA and `sequence_length` < `time_horizon`. (#5206)
+- Fixed a bug where the SAC replay buffer would not be saved out at the end of a run, even if `save_replay_buffer` was enabled. (#5205)
+- ELO now correctly resumes when loading from a checkpoint. (#5202)
+- In the Python API, fixed `validate_action` to expect the right dimensions when `set_action_single_agent` is called. (#5208)
+- In the `GymToUnityWrapper`, raise an appropriate warning if `step()` is called after an environment is done. (#5204)
+- Fixed an issue where using one of the `gym` wrappers would override user-set log levels. (#5201)
+## [1.9.0-preview] - 2021-03-17
+### Major Changes
+#### com.unity.ml-agents (C#)
+- The `BufferSensor` and `BufferSensorComponent` have been added. They allow the Agent to observe variable number of entities. For an example, see the [Sorter environment](https://github.com/Unity-Technologies/ml-agents/blob/release_15_docs/docs/Learning-Environment-Examples.md#sorter). (#4909)
+- The `SimpleMultiAgentGroup` class and `IMultiAgentGroup` interface have been added. These allow Agents to be given rewards and
+  end episodes in groups. For examples, see the [Cooperative Push Block](https://github.com/Unity-Technologies/ml-agents/blob/release_15_docs/docs/Learning-Environment-Examples.md#cooperative-push-block), [Dungeon Escape](https://github.com/Unity-Technologies/ml-agents/blob/release_15_docs/docs/Learning-Environment-Examples.md#dungeon-escape) and [Soccer](https://github.com/Unity-Technologies/ml-agents/blob/release_15_docs/docs/Learning-Environment-Examples.md#soccer-twos) environments. (#4923)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The MA-POCA trainer has been added. This is a new trainer that enables Agents to learn how to work together in groups. Configure
+  `poca` as the trainer in the configuration YAML after instantiating a `SimpleMultiAgentGroup` to use this feature. (#5005)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Updated com.unity.barracuda to 1.3.2-preview. (#5084)
+- Added 3D Ball to the `com.unity.ml-agents` samples. (#5077)
+- Make com.unity.modules.unityanalytics an optional dependency. (#5109)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The `encoding_size` setting for RewardSignals has been deprecated. Please use `network_settings` instead. (#4982)
+- Sensor names are now passed through to `ObservationSpec.name`. (#5036)
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- An issue that caused `GAIL` to fail for environments where agents can terminate episodes by self-sacrifice has been fixed. (#4971)
+- Made the error message when observations of different shapes are sent to the trainer clearer. (#5030)
+- An issue that prevented curriculums from incrementing with self-play has been fixed. (#5098)
+
+## [1.8.1-preview] - 2021-03-08
+### Minor Changes
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The `cattrs` version dependency was updated to allow `>=1.1.0` on Python 3.8 or higher. (#4821)
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Fix an issue where queuing InputEvents overwrote data from previous events in the same frame. (#5034)
+
+## [1.8.0-preview] - 2021-02-17
+### Major Changes
+#### com.unity.ml-agents (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- TensorFlow trainers have been removed, please use the Torch trainers instead. (#4707)
+- A plugin system for `mlagents-learn` has been added. You can now define custom
+  `StatsWriter` implementations and register them to be called during training.
+  More types of plugins will be added in the future. (#4788)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The `ActionSpec` constructor is now public. Previously, it was not possible to create an
+  ActionSpec with both continuous and discrete actions from code. (#4896)
+- `StatAggregationMethod.Sum` can now be passed to `StatsRecorder.Add()`. This
+  will result in the values being summed (instead of averaged) when written to
+  TensorBoard. Thanks to @brccabral for the contribution! (#4816)
+- The upper limit for the time scale (by setting the `--time-scale` paramater in mlagents-learn) was
+  removed when training with a player. The Editor still requires it to be clamped to 100. (#4867)
+- Added the IHeuristicProvider interface to allow IActuators as well as Agent implement the Heuristic function to generate actions.
+  Updated the Basic example and the Match3 Example to use Actuators.
+  Changed the namespace and file names of classes in com.unity.ml-agents.extensions. (#4849)
+- Added `VectorSensor.AddObservation(IList<float>)`. `VectorSensor.AddObservation(IEnumerable<float>)`
+  is deprecated. The `IList` version is recommended, as it does not generate any
+  additional memory allocations. (#4887)
+- Added `ObservationWriter.AddList()` and deprecated `ObservationWriter.AddRange()`.
+  `AddList()` is recommended, as it does not generate any additional memory allocations. (#4887)
+- The Barracuda dependency was upgraded to 1.3.0. (#4898)
+- Added `ActuatorComponent.CreateActuators`, and deprecate `ActuatorComponent.CreateActuator`.  The
+  default implementation will wrap `ActuatorComponent.CreateActuator` in an array and return that. (#4899)
+- `InferenceDevice.Burst` was added, indicating that Agent's model will be run using Barracuda's Burst backend.
+  This is the default for new Agents, but existing ones that use `InferenceDevice.CPU` should update to
+  `InferenceDevice.Burst`. (#4925)
+- Add an InputActuatorComponent to allow the generation of Agent action spaces from an InputActionAsset.
+  Projects wanting to use this feature will need to add the
+  [Input System Package](https://docs.unity3d.com/Packages/com.unity.inputsystem@1.1/manual/index.html)
+  at version 1.1.0-preview.3 or later. (#4881)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Tensorboard now logs the Environment Reward as both a scalar and a histogram. (#4878)
+- Added a `--torch-device` commandline option to `mlagents-learn`, which sets the default
+  [`torch.device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.torch.device) used for training. (#4888)
+- The `--cpu` commandline option had no effect and was removed. Use `--torch-device=cpu` to force CPU training. (#4888)
+- The `mlagents_env` API has changed, `BehaviorSpec` now has a `observation_specs` property containing a list of `ObservationSpec`. For more information on `ObservationSpec` see [here](https://github.com/Unity-Technologies/ml-agents/blob/release_13_docs/docs/Python-API.md#behaviorspec). (#4763, #4825)
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Fix a compile warning about using an obsolete enum in `GrpcExtensions.cs`. (#4812)
+- CameraSensor now logs an error if the GraphicsDevice is null. (#4880)
+- Removed unnecessary memory allocations in `ActuatorManager.UpdateActionArray()` (#4877)
+- Removed unnecessary memory allocations in `SensorShapeValidator.ValidateSensors()` (#4879)
+- Removed unnecessary memory allocations in `SideChannelManager.GetSideChannelMessage()` (#4886)
+- Removed several memory allocations that happened during inference. On a test scene, this
+  reduced the amount of memory allocated by approximately 25%. (#4887)
+- Removed several memory allocations that happened during inference with discrete actions. (#4922)
+- Properly catch permission errors when writing timer files. (#4921)
+- Unexpected exceptions during training initialization and shutdown are now logged. If you see
+  "noisy" logs, please let us know! (#4930, #4935)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed a bug that would cause an exception when `RunOptions` was deserialized via `pickle`. (#4842)
+- Fixed a bug that can cause a crash if a behavior can appear during training in multi-environment training. (#4872)
+- Fixed the computation of entropy for continuous actions. (#4869)
+- Fixed a bug that would cause `UnityEnvironment` to wait the full timeout
+  period and report a misleading error message if the executable crashed
+  without closing the connection. It now periodically checks the process status
+  while waiting for a connection, and raises a better error message if it crashes. (#4880)
+- Passing a `-logfile` option in the `--env-args` option to `mlagents-learn` is
+  no longer overwritten. (#4880)
+- The `load_weights` function was being called unnecessarily often in the Ghost Trainer leading to training slowdowns. (#4934)
+
+
+## [1.7.2-preview] - 2020-12-22
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Add analytics package dependency to the package manifest. (#4794)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed the docker build process. (#4791)
+
+
+## [1.7.0-preview] - 2020-12-21
+### Major Changes
+#### com.unity.ml-agents (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- PyTorch trainers now support training agents with both continuous and discrete action spaces. (#4702)
+The `.onnx` models generated by the trainers of this release are incompatible with versions of Barracuda before `1.2.1-preview`. If you upgrade the trainers, you must upgrade the version of the Barracuda package as well (which can be done by upgrading the `com.unity.ml-agents` package).
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Agents with both continuous and discrete actions are now supported. You can specify
+both continuous and discrete action sizes in Behavior Parameters. (#4702, #4718)
+- In order to improve the developer experience for Unity ML-Agents Toolkit, we have added in-editor analytics.
+Please refer to "Information that is passively collected by Unity" in the
+[Unity Privacy Policy](https://unity3d.com/legal/privacy-policy). (#4677)
+- The FoodCollector example environment now uses continuous actions for moving and
+discrete actions for shooting. (#4746)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- `ActionSpec.validate_action()` now enforces that `UnityEnvironment.set_action_for_agent()` receives a 1D `np.array`. (#4691)
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Removed noisy warnings about API minor version mismatches in both the C# and python code. (#4688)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+
+
+## [1.6.0-preview] - 2020-11-18
+### Major Changes
+#### com.unity.ml-agents (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+ - PyTorch trainers are now the default. See the
+ [installation docs](https://github.com/Unity-Technologies/ml-agents/blob/release_10_docs/docs/Installation.md) for
+ more information on installing PyTorch. For the time being, TensorFlow is still available;
+ you can use the TensorFlow backend by adding `--tensorflow` to the CLI, or
+ adding `framework: tensorflow` in the configuration YAML. (#4517)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The Barracuda dependency was upgraded to 1.1.2 (#4571)
+- Utilities were added to `com.unity.ml-agents.extensions` to make it easier to
+integrate with match-3 games. See the [readme](https://github.com/Unity-Technologies/ml-agents/blob/release_10_docs/com.unity.ml-agents.extensions/Documentation~/Match3.md)
+for more details. (#4515)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The `action_probs` node is no longer listed as an output in TensorFlow models (#4613).
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- `Agent.CollectObservations()` and `Agent.EndEpisode()` will now throw an exception
+if they are called recursively (for example, if they call `Agent.EndEpisode()`).
+Previously, this would result in an infinite loop and cause the editor to hang. (#4573)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed an issue where runs could not be resumed when using TensorFlow and Ghost Training. (#4593)
+- Change the tensor type of step count from int32 to int64 to address the overflow issue when step
+goes larger than 2^31. Previous Tensorflow checkpoints will become incompatible and cannot be loaded. (#4607)
+- Remove extra period after "Training" in console log. (#4674)
+
+
+## [1.5.0-preview] - 2020-10-14
+### Major Changes
+#### com.unity.ml-agents (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+ - Added the Random Network Distillation (RND) intrinsic reward signal to the Pytorch
+ trainers. To use RND, add a `rnd` section to the `reward_signals` section of your
+ yaml configuration file. [More information here](https://github.com/Unity-Technologies/ml-agents/blob/release_9_docs/docs/Training-Configuration-File.md#rnd-intrinsic-reward) (#4473)
+### Minor Changes
+#### com.unity.ml-agents (C#)
+ - Stacking for compressed observations is now supported. An additional setting
+ option `Observation Stacks` is added in editor to sensor components that support
+ compressed observations. A new class `ISparseChannelSensor` with an
+ additional method `GetCompressedChannelMapping()`is added to generate a mapping
+ of the channels in compressed data to the actual channel after decompression,
+ for the python side to decompress correctly. (#4476)
+ - Added a new visual 3DBall environment. (#4513)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+ - The Communication API was changed to 1.2.0 to indicate support for stacked
+ compressed observation. A new entry `compressed_channel_mapping` is added to the
+ proto to handle decompression correctly. Newer versions of the package that wish to
+ make use of this will also need a compatible version of the Python trainers. (#4476)
+ - In the `VisualFoodCollector` scene, a vector flag representing the frozen state of
+ the agent is added to the input observations in addition to the original first-person
+ camera frame. The scene is able to train with the provided default config file. (#4511)
+ - Added conversion to string for sampler classes to increase the verbosity of
+ the curriculum lesson changes. The lesson updates would now output the sampler
+ stats in addition to the lesson and parameter name to the console.  (#4484)
+ - Localized documentation in Russian is added. Thanks to @SergeyMatrosov for
+ the contribution. (#4529)
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+ - Fixed a bug where accessing the Academy outside of play mode would cause the
+ Academy to get stepped multiple times when in play mode. (#4532)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+
+
+## [1.4.0-preview] - 2020-09-16
 ### Major Changes
 #### com.unity.ml-agents (C#)
 #### ml-agents / ml-agents-envs / gym-unity (Python)
 
 ### Minor Changes
 #### com.unity.ml-agents (C#)
+- The `IActuator` interface and `ActuatorComponent` abstract class were added.
+These are analogous to `ISensor` and `SensorComponent`, but for applying actions
+for an Agent. They allow you to control the action space more programmatically
+than defining the actions in the Agent's Behavior Parameters. See
+[BasicActuatorComponent.cs](https://github.com/Unity-Technologies/ml-agents/blob/release_7_docs/Project/Assets/ML-Agents/Examples/Basic/Scripts/BasicActuatorComponent.cs)
+ for an example of how to use them. (#4297, #4315)
+- Update Barracuda to 1.1.1-preview (#4482)
+- Enabled C# formatting using `dotnet-format`. (#4362)
+- GridSensor was added to the `com.unity.ml-agents.extensions` package. Thank you
+to Jaden Travnik from Eidos Montreal for the contribution! (#4399)
+- Added `Agent.EpisodeInterrupted()`, which can be used to reset the agent when
+it has reached a user-determined maximum number of steps. This behaves similarly
+to `Agent.EndEpsiode()` but has a slightly different effect on training (#4453).
 #### ml-agents / ml-agents-envs / gym-unity (Python)
+- Experimental PyTorch support has been added. Use `--torch` when running `mlagents-learn`, or add
+`framework: pytorch` to your trainer configuration (under the behavior name) to enable it.
+Note that PyTorch 1.6.0 or greater should be installed to use this feature; see
+[the PyTorch website](https://pytorch.org/) for installation instructions and
+[the relevant ML-Agents docs](https://github.com/Unity-Technologies/ml-agents/blob/release_7_docs/docs/Training-ML-Agents.md#using-pytorch-experimental) for usage. (#4335)
+- The minimum supported version of TensorFlow was increased to 1.14.0. (#4411)
+- Compressed visual observations with >3 channels are now supported. In
+`ISensor.GetCompressedObservation()`, this can be done by writing 3 channels at a
+time to a PNG and concatenating the resulting bytes. (#4399)
+- The Communication API was changed to 1.1.0 to indicate support for concatenated PNGs
+(see above). Newer versions of the package that wish to make use of this will also need
+a compatible version of the trainer. (#4462)
+- A CNN (`vis_encode_type: match3`) for smaller grids, e.g. board games, has been added.
+(#4434)
+- You can now again specify a default configuration for your behaviors. Specify `default_settings` in
+your trainer configuration to do so. (#4448)
+- Improved the executable detection logic for environments on Windows. (#4485)
 
 ### Bug Fixes
 #### com.unity.ml-agents (C#)
+- Previously, `com.unity.ml-agents` was not declaring built-in packages as
+dependencies in its package.json. The relevant dependencies are now listed. (#4384)
+- Agents no longer try to send observations when they become disabled if the
+Academy has been shut down. (#4489)
 #### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed the sample code in the custom SideChannel example. (#4466)
+- A bug in the observation normalizer that would cause rewards to decrease
+when using `--resume` was fixed. (#4463)
+- Fixed a bug in exporting Pytorch models when using multiple discrete actions. (#4491)
+
+## [1.3.0-preview] - 2020-08-12
+
+### Major Changes
+#### com.unity.ml-agents (C#)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The minimum supported Python version for ml-agents-envs was changed to 3.6.1. (#4244)
+- The interaction between EnvManager and TrainerController was changed; EnvManager.advance() was split into to stages,
+and TrainerController now uses the results from the first stage to handle new behavior names. This change speeds up
+Python training by approximately 5-10%. (#4259)
+
+### Minor Changes
+#### com.unity.ml-agents (C#)
+- StatsSideChannel now stores multiple values per key. This means that multiple
+calls to `StatsRecorder.Add()` with the same key in the same step will no
+longer overwrite each other. (#4236)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The versions of `numpy` supported by ml-agents-envs were changed to disallow 1.19.0 or later. This was done to reflect
+a similar change in TensorFlow's requirements. (#4274)
+- Model checkpoints are now also saved as .nn files during training. (#4127)
+- Model checkpoint info is saved in TrainingStatus.json after training is concluded (#4127)
+- CSV statistics writer was removed (#4300).
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Academy.EnvironmentStep() will now throw an exception if it is called
+recursively (for example, by an Agent's CollectObservations method).
+Previously, this would result in an infinite loop and cause the editor to hang.
+(#4226)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The algorithm used to normalize observations was introducing NaNs if the initial observations were too large
+due to incorrect initialization. The initialization was fixed and is now the observation means from the
+first trajectory processed. (#4299)
+
+## [1.2.0-preview] - 2020-07-15
+
+### Major Changes
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- The Parameter Randomization feature has been refactored to enable sampling of new parameters per episode to improve robustness. The
+  `resampling-interval` parameter has been removed and the config structure updated. More information [here](https://github.com/Unity-Technologies/ml-agents/blob/release_5_docs/docs/Training-ML-Agents.md). (#4065)
+- The Parameter Randomization feature has been merged with the Curriculum feature. It is now possible to specify a sampler
+in the lesson of a Curriculum. Curriculum has been refactored and is now specified at the level of the parameter, not the
+behavior. More information
+[here](https://github.com/Unity-Technologies/ml-agents/blob/release_5_docs/docs/Training-ML-Agents.md).(#4160)
+
+### Minor Changes
+#### com.unity.ml-agents (C#)
+- `SideChannelsManager` was renamed to `SideChannelManager`. The old name is still supported, but deprecated. (#4137)
+- `RayPerceptionSensor.Perceive()` now additionally store the GameObject that was hit by the ray. (#4111)
+- The Barracuda dependency was upgraded to 1.0.1 (#4188)
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Added new Google Colab notebooks to show how to use `UnityEnvironment'. (#4117)
+
+### Bug Fixes
+#### com.unity.ml-agents (C#)
+- Fixed an issue where RayPerceptionSensor would raise an exception when the
+list of tags was empty, or a tag in the list was invalid (unknown, null, or
+empty string). (#4155)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed an error when setting `initialize_from` in the trainer confiiguration YAML to
+`null`. (#4175)
+- Fixed issue with FoodCollector, Soccer, and WallJump when playing with keyboard. (#4147, #4174)
+- Fixed a crash in StatsReporter when using threaded trainers with very frequent summary writes
+(#4201)
+- `mlagents-learn` will now raise an error immediately if `--num-envs` is greater than 1 without setting the `--env`
+argument. (#4203)
 
 ## [1.1.0-preview] - 2020-06-10
 ### Major Changes
@@ -28,7 +426,7 @@ and this project adheres to
 - `max_step` in the `TerminalStep` and `TerminalSteps` objects was renamed `interrupted`.
 - `beta` and `epsilon` in `PPO` are no longer decayed by default but follow the same schedule as learning rate. (#3940)
 - `get_behavior_names()` and `get_behavior_spec()` on UnityEnvironment were replaced by the `behavior_specs` property. (#3946)
-- The first version of the Unity Environment Registry (Experimental) has been released. More information [here](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Unity-Environment-Registry.md)(#3967)
+- The first version of the Unity Environment Registry (Experimental) has been released. More information [here](https://github.com/Unity-Technologies/ml-agents/blob/release_5_docs/docs/Unity-Environment-Registry.md)(#3967)
 - `use_visual` and `allow_multiple_visual_obs` in the `UnityToGymWrapper` constructor
 were replaced by `allow_multiple_obs` which allows one or more visual observations and
 vector observations to be used simultaneously. (#3981) Thank you @shakenes !
@@ -36,7 +434,7 @@ vector observations to be used simultaneously. (#3981) Thank you @shakenes !
   into the main training configuration file. Note that this means training
   configuration files are now environment-specific. (#3791)
 - The format for trainer configuration has changed, and the "default" behavior has been deprecated.
-  See the [Migration Guide](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Migrating.md) for more details. (#3936)
+  See the [Migration Guide](https://github.com/Unity-Technologies/ml-agents/blob/release_5_docs/docs/Migrating.md) for more details. (#3936)
 - Training artifacts (trained models, summaries) are now found in the `results/`
   directory. (#3829)
 - When using Curriculum, the current lesson will resume if training is quit and resumed. As such,
@@ -97,7 +495,7 @@ vector observations to be used simultaneously. (#3981) Thank you @shakenes !
   - Introduced the `SideChannelManager` to register, unregister and access side
     channels. (#3807)
   - `Academy.FloatProperties` was replaced by `Academy.EnvironmentParameters`.
-    See the [Migration Guide](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Migrating.md)
+    See the [Migration Guide](https://github.com/Unity-Technologies/ml-agents/blob/release_1_docs/docs/Migrating.md)
     for more details on upgrading. (#3807)
   - `SideChannel.OnMessageReceived` is now a protected method (was public)
   - SideChannel IncomingMessages methods now take an optional default argument,
@@ -126,9 +524,9 @@ vector observations to be used simultaneously. (#3981) Thank you @shakenes !
   `--load`. (#3705)
 - The Jupyter notebooks have been removed from the repository. (#3704)
 - The multi-agent gym option was removed from the gym wrapper. For multi-agent
-  scenarios, use the [Low Level Python API](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Python-API.md). (#3681)
+  scenarios, use the [Low Level Python API](https://github.com/Unity-Technologies/ml-agents/blob/release_1_docs/docs/Python-API.md). (#3681)
 - The low level Python API has changed. You can look at the document
-  [Low Level Python API](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Python-API.md)
+  [Low Level Python API](https://github.com/Unity-Technologies/ml-agents/blob/release_1_docs/docs/Python-API.md)
   documentation for more information. If you use `mlagents-learn` for training, this should be a
   transparent change. (#3681)
 - Added ability to start training (initialize model weights) from a previous run

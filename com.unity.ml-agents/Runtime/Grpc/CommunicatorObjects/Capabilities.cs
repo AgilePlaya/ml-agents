@@ -25,13 +25,18 @@ namespace Unity.MLAgents.CommunicatorObjects {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CjVtbGFnZW50c19lbnZzL2NvbW11bmljYXRvcl9vYmplY3RzL2NhcGFiaWxp",
-            "dGllcy5wcm90bxIUY29tbXVuaWNhdG9yX29iamVjdHMiNgoYVW5pdHlSTENh",
-            "cGFiaWxpdGllc1Byb3RvEhoKEmJhc2VSTENhcGFiaWxpdGllcxgBIAEoCEIl",
-            "qgIiVW5pdHkuTUxBZ2VudHMuQ29tbXVuaWNhdG9yT2JqZWN0c2IGcHJvdG8z"));
+            "dGllcy5wcm90bxIUY29tbXVuaWNhdG9yX29iamVjdHMi7AEKGFVuaXR5UkxD",
+            "YXBhYmlsaXRpZXNQcm90bxIaChJiYXNlUkxDYXBhYmlsaXRpZXMYASABKAgS",
+            "IwobY29uY2F0ZW5hdGVkUG5nT2JzZXJ2YXRpb25zGAIgASgIEiAKGGNvbXBy",
+            "ZXNzZWRDaGFubmVsTWFwcGluZxgDIAEoCBIVCg1oeWJyaWRBY3Rpb25zGAQg",
+            "ASgIEhkKEXRyYWluaW5nQW5hbHl0aWNzGAUgASgIEiEKGXZhcmlhYmxlTGVu",
+            "Z3RoT2JzZXJ2YXRpb24YBiABKAgSGAoQbXVsdGlBZ2VudEdyb3VwcxgHIAEo",
+            "CEIlqgIiVW5pdHkuTUxBZ2VudHMuQ29tbXVuaWNhdG9yT2JqZWN0c2IGcHJv",
+            "dG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Unity.MLAgents.CommunicatorObjects.UnityRLCapabilitiesProto), global::Unity.MLAgents.CommunicatorObjects.UnityRLCapabilitiesProto.Parser, new[]{ "BaseRLCapabilities" }, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Unity.MLAgents.CommunicatorObjects.UnityRLCapabilitiesProto), global::Unity.MLAgents.CommunicatorObjects.UnityRLCapabilitiesProto.Parser, new[]{ "BaseRLCapabilities", "ConcatenatedPngObservations", "CompressedChannelMapping", "HybridActions", "TrainingAnalytics", "VariableLengthObservation", "MultiAgentGroups" }, null, null, null)
           }));
     }
     #endregion
@@ -69,6 +74,12 @@ namespace Unity.MLAgents.CommunicatorObjects {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public UnityRLCapabilitiesProto(UnityRLCapabilitiesProto other) : this() {
       baseRLCapabilities_ = other.baseRLCapabilities_;
+      concatenatedPngObservations_ = other.concatenatedPngObservations_;
+      compressedChannelMapping_ = other.compressedChannelMapping_;
+      hybridActions_ = other.hybridActions_;
+      trainingAnalytics_ = other.trainingAnalytics_;
+      variableLengthObservation_ = other.variableLengthObservation_;
+      multiAgentGroups_ = other.multiAgentGroups_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -91,6 +102,90 @@ namespace Unity.MLAgents.CommunicatorObjects {
       }
     }
 
+    /// <summary>Field number for the "concatenatedPngObservations" field.</summary>
+    public const int ConcatenatedPngObservationsFieldNumber = 2;
+    private bool concatenatedPngObservations_;
+    /// <summary>
+    /// concatenated PNG files for compressed visual observations with >3 channels.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool ConcatenatedPngObservations {
+      get { return concatenatedPngObservations_; }
+      set {
+        concatenatedPngObservations_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "compressedChannelMapping" field.</summary>
+    public const int CompressedChannelMappingFieldNumber = 3;
+    private bool compressedChannelMapping_;
+    /// <summary>
+    /// compression mapping for stacking compressed observations.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool CompressedChannelMapping {
+      get { return compressedChannelMapping_; }
+      set {
+        compressedChannelMapping_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "hybridActions" field.</summary>
+    public const int HybridActionsFieldNumber = 4;
+    private bool hybridActions_;
+    /// <summary>
+    /// support for hybrid action spaces (discrete + continuous)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool HybridActions {
+      get { return hybridActions_; }
+      set {
+        hybridActions_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "trainingAnalytics" field.</summary>
+    public const int TrainingAnalyticsFieldNumber = 5;
+    private bool trainingAnalytics_;
+    /// <summary>
+    /// support for training analytics
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool TrainingAnalytics {
+      get { return trainingAnalytics_; }
+      set {
+        trainingAnalytics_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "variableLengthObservation" field.</summary>
+    public const int VariableLengthObservationFieldNumber = 6;
+    private bool variableLengthObservation_;
+    /// <summary>
+    /// Support for variable length observations of rank 2
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool VariableLengthObservation {
+      get { return variableLengthObservation_; }
+      set {
+        variableLengthObservation_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "multiAgentGroups" field.</summary>
+    public const int MultiAgentGroupsFieldNumber = 7;
+    private bool multiAgentGroups_;
+    /// <summary>
+    /// Support for multi agent groups and group rewards
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool MultiAgentGroups {
+      get { return multiAgentGroups_; }
+      set {
+        multiAgentGroups_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as UnityRLCapabilitiesProto);
@@ -105,6 +200,12 @@ namespace Unity.MLAgents.CommunicatorObjects {
         return true;
       }
       if (BaseRLCapabilities != other.BaseRLCapabilities) return false;
+      if (ConcatenatedPngObservations != other.ConcatenatedPngObservations) return false;
+      if (CompressedChannelMapping != other.CompressedChannelMapping) return false;
+      if (HybridActions != other.HybridActions) return false;
+      if (TrainingAnalytics != other.TrainingAnalytics) return false;
+      if (VariableLengthObservation != other.VariableLengthObservation) return false;
+      if (MultiAgentGroups != other.MultiAgentGroups) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -112,6 +213,12 @@ namespace Unity.MLAgents.CommunicatorObjects {
     public override int GetHashCode() {
       int hash = 1;
       if (BaseRLCapabilities != false) hash ^= BaseRLCapabilities.GetHashCode();
+      if (ConcatenatedPngObservations != false) hash ^= ConcatenatedPngObservations.GetHashCode();
+      if (CompressedChannelMapping != false) hash ^= CompressedChannelMapping.GetHashCode();
+      if (HybridActions != false) hash ^= HybridActions.GetHashCode();
+      if (TrainingAnalytics != false) hash ^= TrainingAnalytics.GetHashCode();
+      if (VariableLengthObservation != false) hash ^= VariableLengthObservation.GetHashCode();
+      if (MultiAgentGroups != false) hash ^= MultiAgentGroups.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -129,6 +236,30 @@ namespace Unity.MLAgents.CommunicatorObjects {
         output.WriteRawTag(8);
         output.WriteBool(BaseRLCapabilities);
       }
+      if (ConcatenatedPngObservations != false) {
+        output.WriteRawTag(16);
+        output.WriteBool(ConcatenatedPngObservations);
+      }
+      if (CompressedChannelMapping != false) {
+        output.WriteRawTag(24);
+        output.WriteBool(CompressedChannelMapping);
+      }
+      if (HybridActions != false) {
+        output.WriteRawTag(32);
+        output.WriteBool(HybridActions);
+      }
+      if (TrainingAnalytics != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(TrainingAnalytics);
+      }
+      if (VariableLengthObservation != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(VariableLengthObservation);
+      }
+      if (MultiAgentGroups != false) {
+        output.WriteRawTag(56);
+        output.WriteBool(MultiAgentGroups);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -138,6 +269,24 @@ namespace Unity.MLAgents.CommunicatorObjects {
     public int CalculateSize() {
       int size = 0;
       if (BaseRLCapabilities != false) {
+        size += 1 + 1;
+      }
+      if (ConcatenatedPngObservations != false) {
+        size += 1 + 1;
+      }
+      if (CompressedChannelMapping != false) {
+        size += 1 + 1;
+      }
+      if (HybridActions != false) {
+        size += 1 + 1;
+      }
+      if (TrainingAnalytics != false) {
+        size += 1 + 1;
+      }
+      if (VariableLengthObservation != false) {
+        size += 1 + 1;
+      }
+      if (MultiAgentGroups != false) {
         size += 1 + 1;
       }
       if (_unknownFields != null) {
@@ -154,6 +303,24 @@ namespace Unity.MLAgents.CommunicatorObjects {
       if (other.BaseRLCapabilities != false) {
         BaseRLCapabilities = other.BaseRLCapabilities;
       }
+      if (other.ConcatenatedPngObservations != false) {
+        ConcatenatedPngObservations = other.ConcatenatedPngObservations;
+      }
+      if (other.CompressedChannelMapping != false) {
+        CompressedChannelMapping = other.CompressedChannelMapping;
+      }
+      if (other.HybridActions != false) {
+        HybridActions = other.HybridActions;
+      }
+      if (other.TrainingAnalytics != false) {
+        TrainingAnalytics = other.TrainingAnalytics;
+      }
+      if (other.VariableLengthObservation != false) {
+        VariableLengthObservation = other.VariableLengthObservation;
+      }
+      if (other.MultiAgentGroups != false) {
+        MultiAgentGroups = other.MultiAgentGroups;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -167,6 +334,30 @@ namespace Unity.MLAgents.CommunicatorObjects {
             break;
           case 8: {
             BaseRLCapabilities = input.ReadBool();
+            break;
+          }
+          case 16: {
+            ConcatenatedPngObservations = input.ReadBool();
+            break;
+          }
+          case 24: {
+            CompressedChannelMapping = input.ReadBool();
+            break;
+          }
+          case 32: {
+            HybridActions = input.ReadBool();
+            break;
+          }
+          case 40: {
+            TrainingAnalytics = input.ReadBool();
+            break;
+          }
+          case 48: {
+            VariableLengthObservation = input.ReadBool();
+            break;
+          }
+          case 56: {
+            MultiAgentGroups = input.ReadBool();
             break;
           }
         }

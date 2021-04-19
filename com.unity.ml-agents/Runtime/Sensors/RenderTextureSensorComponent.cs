@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -7,7 +8,7 @@ namespace Unity.MLAgents.Sensors
     /// Component that wraps a <see cref="RenderTextureSensor"/>.
     /// </summary>
     [AddComponentMenu("ML Agents/Render Texture Sensor", (int)MenuGroup.Sensors)]
-    public class RenderTextureSensorComponent : SensorComponent
+    public class RenderTextureSensorComponent : SensorComponent, IDisposable
     {
         RenderTextureSensor m_Sensor;
 
@@ -24,8 +25,8 @@ namespace Unity.MLAgents.Sensors
         /// </summary>
         public RenderTexture RenderTexture
         {
-            get { return m_RenderTexture;  }
-            set { m_RenderTexture = value;  }
+            get { return m_RenderTexture; }
+            set { m_RenderTexture = value; }
         }
 
         [HideInInspector, SerializeField, FormerlySerializedAs("sensorName")]
@@ -37,7 +38,7 @@ namespace Unity.MLAgents.Sensors
         /// </summary>
         public string SensorName
         {
-            get { return m_SensorName;  }
+            get { return m_SensorName; }
             set { m_SensorName = value; }
         }
 
@@ -50,9 +51,14 @@ namespace Unity.MLAgents.Sensors
         /// </summary>
         public bool Grayscale
         {
-            get { return m_Grayscale;  }
+            get { return m_Grayscale; }
             set { m_Grayscale = value; }
         }
+
+        [HideInInspector, SerializeField]
+        [Range(1, 50)]
+        [Tooltip("Number of frames that will be stacked before being fed to the neural network.")]
+        int m_ObservationStacks = 1;
 
         [HideInInspector, SerializeField, FormerlySerializedAs("compression")]
         SensorCompressionType m_Compression = SensorCompressionType.PNG;
@@ -62,24 +68,30 @@ namespace Unity.MLAgents.Sensors
         /// </summary>
         public SensorCompressionType CompressionType
         {
-            get { return m_Compression;  }
+            get { return m_Compression; }
             set { m_Compression = value; UpdateSensor(); }
         }
 
-        /// <inheritdoc/>
-        public override ISensor CreateSensor()
+        /// <summary>
+        /// Whether to stack previous observations. Using 1 means no previous observations.
+        /// Note that changing this after the sensor is created has no effect.
+        /// </summary>
+        public int ObservationStacks
         {
-            m_Sensor = new RenderTextureSensor(RenderTexture, Grayscale, SensorName, m_Compression);
-            return m_Sensor;
+            get { return m_ObservationStacks; }
+            set { m_ObservationStacks = value; }
         }
 
         /// <inheritdoc/>
-        public override int[] GetObservationShape()
+        public override ISensor[] CreateSensors()
         {
-            var width = RenderTexture != null ? RenderTexture.width : 0;
-            var height = RenderTexture != null ? RenderTexture.height : 0;
-
-            return new[] { height, width, Grayscale ? 1 : 3 };
+            Dispose();
+            m_Sensor = new RenderTextureSensor(RenderTexture, Grayscale, SensorName, m_Compression);
+            if (ObservationStacks != 1)
+            {
+                return new ISensor[] { new StackingSensor(m_Sensor, ObservationStacks) };
+            }
+            return new ISensor[] { m_Sensor };
         }
 
         /// <summary>
@@ -90,6 +102,18 @@ namespace Unity.MLAgents.Sensors
             if (m_Sensor != null)
             {
                 m_Sensor.CompressionType = m_Compression;
+            }
+        }
+
+        /// <summary>
+        /// Clean up the sensor created by CreateSensors().
+        /// </summary>
+        public void Dispose()
+        {
+            if (!ReferenceEquals(null, m_Sensor))
+            {
+                m_Sensor.Dispose();
+                m_Sensor = null;
             }
         }
     }

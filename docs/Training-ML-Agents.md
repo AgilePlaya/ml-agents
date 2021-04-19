@@ -9,13 +9,12 @@
     - [Loading an Existing Model](#loading-an-existing-model)
 - [Training Configurations](#training-configurations)
   - [Behavior Configurations](#behavior-configurations)
-  - [Curriculum Learning](#curriculum-learning)
-    - [Specifying Curricula](#specifying-curricula)
-    - [Training with a Curriculum](#training-with-a-curriculum)
-  - [Environment Parameter Randomization](#environment-parameter-randomization)
-    - [Included Sampler Types](#included-sampler-types)
-    - [Defining a New Sampler Type](#defining-a-new-sampler-type)
-    - [Training with Environment Parameter Randomization](#training-with-environment-parameter-randomization)
+  - [Environment Parameters](#environment-parameters)
+    - [Environment Parameter Randomization](#environment-parameter-randomization)
+      - [Supported Sampler Types](#supported-sampler-types)
+      - [Training with Environment Parameter Randomization](#training-with-environment-parameter-randomization)
+    - [Curriculum Learning](#curriculum)
+      - [Training with a Curriculum](#training-with-a-curriculum)
   - [Training Using Concurrent Unity Instances](#training-using-concurrent-unity-instances)
 
 For a broad overview of reinforcement learning, imitation learning and all the
@@ -59,7 +58,7 @@ mlagents-learn <trainer-config-file> --env=<env_name> --run-id=<run-identifier>
 
 where
 
-- `<trainer-config-file>` is the file path of the trainer configuration yaml.
+- `<trainer-config-file>` is the file path of the trainer configuration YAML.
   This contains all the hyperparameter values. We offer a detailed guide on the
   structure of this file and the meaning of the hyperparameters (and advice on
   how to set them) in the dedicated
@@ -88,7 +87,7 @@ in the `results/<run-identifier>` folder:
    values. See [Using TensorBoard](Using-Tensorboard.md) for more details on how
    to visualize the training metrics.
 1. Models: these contain the model checkpoints that
-   are updated throughout training and the final model file (`.nn`). This final
+   are updated throughout training and the final model file (`.onnx`). This final
    model file is generated once either when training completes or is
    interrupted.
 1. Timers file (under `results/<run-identifier>/run_logs`): this contains aggregated
@@ -96,8 +95,8 @@ in the `results/<run-identifier>` folder:
    blocks. See [Profiling in Python](Profiling-Python.md) for more information
    on the timers generated.
 
-These artifacts (except the `.nn` file) are updated throughout the training
-process and finalized when training completes or is interrupted.
+These artifacts are updated throughout the training
+process and finalized when training is completed or is interrupted.
 
 #### Stopping and Resuming Training
 
@@ -118,6 +117,13 @@ Python by using both the `--resume` and `--inference` flags. Note that if you
 want to run inference in Unity, you should use the
 [Unity Inference Engine](Getting-Started.md#running-a-pre-trained-model).
 
+Additionally, if the network architecture changes, you may still load an existing model,
+but ML-Agents will only load the parts of the model it can load and ignore all others. For instance,
+if you add a new reward signal, the existing model will load but the new reward signal
+will be initialized from scratch. If you have a model with a visual encoder (CNN) but
+change the `hidden_units`, the CNN will be loaded but the body of the network will be
+initialized from scratch.
+
 Alternatively, you might want to start a new training run but _initialize_ it
 using an already-trained model. You may want to do this, for instance, if your
 environment changed and you want a new model, but the old behavior is still
@@ -137,16 +143,8 @@ More specifically, this section offers a detailed guide on the command-line
 flags for `mlagents-learn` that control the training configurations:
 
 - `<trainer-config-file>`: defines the training hyperparameters for each
-  Behavior in the scene, and the set-ups for Curriculum Learning and
-  Environment Parameter Randomization
-- `--num-envs`: number of concurrent Unity instances to use during training
-
-Reminder that a detailed description of all command-line options can be found by
-using the help utility:
-
-```sh
-mlagents-learn --help
-```
+  Behavior in the scene, and the set-ups for the environment parameters
+  (Curriculum Learning and Environment Parameter Randomization)
 
 It is important to highlight that successfully training a Behavior in the
 ML-Agents Toolkit involves tuning the training hyperparameters and
@@ -173,16 +171,76 @@ add typically has its own training configurations. For instance:
   demonstrations.)
 - Use self-play? (Assuming your environment includes multiple agents.)
 
-
 The trainer config file, `<trainer-config-file>`, determines the features you will
 use during training, and the answers to the above questions will dictate its contents.
 The rest of this guide breaks down the different sub-sections of the trainer config file
-and explains the possible settings for each.
+and explains the possible settings for each. If you need a list of all the trainer
+configurations, please see [Training Configuration File](Training-Configuration-File.md).
 
-**NOTE:** The configuration file format has been changed from 0.17.0 and onwards. To convert
+**NOTE:** The configuration file format has been changed between 0.17.0 and 0.18.0 and
+between 0.18.0 and onwards. To convert
 an old set of configuration files (trainer config, curriculum, and sampler files) to the new
 format, a script has been provided. Run `python -m mlagents.trainers.upgrade_config -h` in your
 console to see the script's usage.
+
+### Adding CLI Arguments to the Training Configuration file
+
+Additionally, within the training configuration YAML file, you can also add the
+CLI arguments (such as `--num-envs`).
+
+Reminder that a detailed description of all the CLI arguments can be found by
+using the help utility:
+
+```sh
+mlagents-learn --help
+```
+
+These additional CLI arguments are grouped into environment, engine, checkpoint and torch.
+The available settings and example values are shown below.
+
+#### Environment settings
+
+```yaml
+env_settings:
+  env_path: FoodCollector
+  env_args: null
+  base_port: 5005
+  num_envs: 1
+  seed: -1
+```
+
+#### Engine settings
+
+```yaml
+engine_settings:
+  width: 84
+  height: 84
+  quality_level: 5
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: false
+```
+
+#### Checkpoint settings
+
+```yaml
+checkpoint_settings:
+  run_id: foodtorch
+  initialize_from: null
+  load_model: false
+  resume: false
+  force: true
+  train_model: false
+  inference: false
+```
+
+#### Torch settings:
+
+```yaml
+torch_settings:
+  device: cpu
+```
 
 ### Behavior Configurations
 
@@ -194,7 +252,7 @@ below is a sample file that includes all the possible settings if we're using a
 PPO trainer with all the possible training functionalities enabled (memory,
 behavioral cloning, curiosity, GAIL and self-play). You will notice that
 curriculum and environment parameter randomization settings are not part of the `behaviors`
-configuration, but their settings live in different sections that we'll cover subsequently.
+configuration, but in their own section called `environment_parameters`.
 
 ```yaml
 behaviors:
@@ -217,7 +275,7 @@ behaviors:
 
     # Configuration of the neural network (common to PPO/SAC)
     network_settings:
-      vis_encoder_type: simple
+      vis_encode_type: simple
       normalize: false
       hidden_units: 128
       num_layers: 2
@@ -232,7 +290,7 @@ behaviors:
     summary_freq: 10000
     keep_checkpoints: 5
     checkpoint_interval: 50000
-    threaded: true
+    threaded: false
     init_path: null
 
     # behavior cloning
@@ -337,11 +395,31 @@ each of these parameters mean and provide guidelines on how to set them. See
 description of all the configurations listed above, along with their defaults.
 Unless otherwise specified, omitting a configuration will revert it to its default.
 
-### Curriculum Learning
+### Default Behavior Settings
 
-To enable curriculum learning, you need to add a `curriculum ` sub-section to the trainer
-configuration YAML file. Within this sub-section, add an entry for each behavior that defines
-the curriculum for thatbehavior. Here is one example:
+In some cases, you may want to specify a set of default configurations for your Behaviors.
+This may be useful, for instance, if your Behavior names are generated procedurally by
+the environment and not known before runtime, or if you have many Behaviors with very similar
+settings. To specify a default configuraton, insert a `default_settings` section in your YAML.
+This section should be formatted exactly like a configuration for a Behavior.
+
+```yaml
+default_settings:
+  # < Same as Behavior configuration >
+behaviors:
+  # < Same as above >
+```
+
+Behaviors found in the environment that aren't specified in the YAML will now use the `default_settings`,
+and unspecified settings in behavior configurations will default to the values in `default_settings` if
+specified there.
+
+### Environment Parameters
+
+In order to control the `EnvironmentParameters` in the Unity simulation during training,
+you need to add a section called `environment_parameters`. For example you can set the
+value of an `EnvironmentParameter` called `my_environment_parameter` to `3.0` with
+the following code :
 
 ```yml
 behaviors:
@@ -349,68 +427,154 @@ behaviors:
     # < Same as above >
 
 # Add this section
-curriculum:
-  BehaviorY:
-    measure: progress
-    thresholds: [0.1, 0.3, 0.5]
-    min_lesson_length: 100
-    signal_smoothing: true
-    parameters:
-      wall_height: [1.5, 2.0, 2.5, 4.0]
+environment_parameters:
+  my_environment_parameter: 3.0
 ```
 
-Each group of Agents under the same `Behavior Name` in an environment can have a
-corresponding curriculum. These curricula are held in what we call a
-"metacurriculum". A metacurriculum allows different groups of Agents to follow
-different curricula within the same environment.
+Inside the Unity simulation, you can access your Environment Parameters by doing :
 
-#### Specifying Curricula
+```csharp
+Academy.Instance.EnvironmentParameters.GetWithDefault("my_environment_parameter", 0.0f);
+```
 
-In order to define the curricula, the first step is to decide which parameters
-of the environment will vary. In the case of the Wall Jump environment, the
-height of the wall is what varies. Rather than adjusting it by hand, we will
-create a configuration which describes the structure of the curricula. Within it, we
-can specify which points in the training process our wall height will change,
-either based on the percentage of training steps which have taken place, or what
-the average reward the agent has received in the recent past is. Below is an
-example config for the curricula for the Wall Jump environment.
+#### Environment Parameter Randomization
 
-```yaml
+To enable environment parameter randomization, you need to edit the `environment_parameters`
+section of your training configuration yaml file. Instead of providing a single float value
+for your environment parameter, you can specify a sampler instead. Here is an example with
+three environment parameters called `mass`, `length` and `scale`:
+
+```yml
 behaviors:
-  BigWallJump:
-    # < Trainer parameters for BigWallJump >
-  SmallWallJump:
-    # < Trainer parameters for SmallWallJump >
+  BehaviorY:
+    # < Same as above >
 
-curriculum:
-  BigWallJump:
-      measure: progress
-      thresholds: [0.1, 0.3, 0.5]
-      min_lesson_length: 100
-      signal_smoothing: true
-      parameters:
-        big_wall_min_height: [0.0, 4.0, 6.0, 8.0]
-        big_wall_max_height: [4.0, 7.0, 8.0, 8.0]
-  SmallWallJump:
-    measure: progress
-    thresholds: [0.1, 0.3, 0.5]
-    min_lesson_length: 100
-    signal_smoothing: true
-    parameters:
-      small_wall_height: [1.5, 2.0, 2.5, 4.0]
+# Add this section
+environment_parameters:
+  mass:
+    sampler_type: uniform
+    sampler_parameters:
+        min_value: 0.5
+        max_value: 10
+
+  length:
+    sampler_type: multirangeuniform
+    sampler_parameters:
+        intervals: [[7, 10], [15, 20]]
+
+  scale:
+    sampler_type: gaussian
+    sampler_parameters:
+        mean: 2
+        st_dev: .3
 ```
 
-The curriculum for each Behavior has the following parameters:
+
+| **Setting**                  | **Description**                                                                                                                                                                                                                                                                                                                         |
+| :--------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sampler_type`               | A string identifier for the type of sampler to use for this `Environment Parameter`.                                                                                                                                                                                                    |
+| `sampler_parameters` | The parameters for a given `sampler_type`. Samplers of different types can have different `sampler_parameters` |
+
+##### Supported Sampler Types
+
+Below is a list of the `sampler_type` values supported by the toolkit.
+
+- `uniform` - Uniform sampler
+  - Uniformly samples a single float value from a range with a given minimum
+    and maximum value (inclusive).
+  - **parameters** - `min_value`, `max_value`
+- `gaussian` - Gaussian sampler
+  - Samples a single float value from a normal distribution with a given mean
+    and standard deviation.
+  - **parameters** - `mean`, `st_dev`
+- `multirange_uniform` - Multirange uniform sampler
+  - First, samples an interval from a set of intervals in proportion to relative
+    length of the intervals. Then, uniformly samples a single float value from the
+    sampled interval (inclusive). This sampler can take an arbitrary number of
+    intervals in a list in the following format:
+    [[`interval_1_min`, `interval_1_max`], [`interval_2_min`,
+    `interval_2_max`], ...]
+  - **parameters** - `intervals`
+
+The implementation of the samplers can be found in the
+[Samplers.cs file](../com.unity.ml-agents/Runtime/Sampler.cs).
+
+##### Training with Environment Parameter Randomization
+
+After the sampler configuration is defined, we proceed by launching `mlagents-learn`
+and specify trainer configuration with  parameter randomization enabled. For example,
+if we wanted to train the 3D ball agent with parameter randomization, we would run
+
+```sh
+mlagents-learn config/ppo/3DBall_randomize.yaml --run-id=3D-Ball-randomize
+```
+
+We can observe progress and metrics via TensorBoard.
+
+#### Curriculum
+
+To enable curriculum learning, you need to add a `curriculum` sub-section to your environment
+parameter. Here is one example with the environment parameter `my_environment_parameter` :
+
+```yml
+behaviors:
+  BehaviorY:
+    # < Same as above >
+
+# Add this section
+environment_parameters:
+  my_environment_parameter:
+    curriculum:
+      - name: MyFirstLesson # The '-' is important as this is a list
+        completion_criteria:
+          measure: progress
+          behavior: my_behavior
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 0.2
+        value: 0.0
+      - name: MySecondLesson # This is the start of the second lesson
+        completion_criteria:
+          measure: progress
+          behavior: my_behavior
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 0.6
+          require_reset: true
+        value:
+          sampler_type: uniform
+          sampler_parameters:
+            min_value: 4.0
+            max_value: 7.0
+      - name: MyLastLesson
+        value: 8.0
+```
+
+Note that this curriculum __only__ applies to `my_environment_parameter`. The `curriculum` section
+contains a list of `Lessons`. In the example, the lessons are named `MyFirstLesson`, `MySecondLesson`
+and `MyLastLesson`.
+Each `Lesson` has 3 fields :
+
+ - `name` which is a user defined name for the lesson (The name of the lesson will be displayed in
+ the console when the lesson changes)
+ - `completion_criteria` which determines what needs to happen in the simulation before the lesson
+ can be considered complete. When that condition is met, the curriculum moves on to the next
+ `Lesson`. Note that you do not need to specify a `completion_criteria` for the last `Lesson`
+ - `value` which is the value the environment parameter will take during the lesson. Note that this
+ can be a float or a sampler.
+
+ There are the different settings of the `completion_criteria` :
+
 
 | **Setting**         | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `measure`           | What to measure learning progress, and advancement in lessons by.<br><br> `reward` uses a measure received reward, while `progress` uses the ratio of steps/max_steps.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `thresholds`        | Points in value of `measure` where lesson should be increased.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `behavior`        | Specifies which behavior is being tracked. There can be multiple behaviors with different names, each at different points of training. This setting allows the curriculum to track only one of them.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `threshold`        | Determines at what point in value of `measure` the lesson should be increased.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `min_lesson_length` | The minimum number of episodes that should be completed before the lesson can change. If `measure` is set to `reward`, the average cumulative reward of the last `min_lesson_length` episodes will be used to determine if the lesson should change. Must be nonnegative. <br><br> **Important**: the average reward that is compared to the thresholds is different than the mean reward that is logged to the console. For example, if `min_lesson_length` is `100`, the lesson will increment after the average cumulative reward of the last `100` episodes exceeds the current threshold. The mean reward logged to the console is dictated by the `summary_freq` parameter defined above. |
 | `signal_smoothing`  | Whether to weight the current progress measure by previous values.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `parameters`        | Corresponds to environment parameters to control. Length of each array should be one greater than number of thresholds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-
-#### Training with a Curriculum
+| `require_reset`  | Whether changing lesson requires the environment to reset (default: false)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+##### Training with a Curriculum
 
 Once we have specified our metacurriculum and curricula, we can launch
 `mlagents-learn` to point to the config file containing
@@ -425,120 +589,6 @@ We can then keep track of the current lessons and progresses via TensorBoard. If
 the run, you can resume it using `--resume` and lesson progress will start off where it
 ended.
 
-### Environment Parameter Randomization
-
-To enable parameter randomization, you need to add a `parameter-randomization` sub-section
-to your trainer config YAML file. Here is one example:
-
-```yaml
-behaviors:
-  # < Same as above>
-
-parameter_randomization:
-  resampling-interval: 5000
-
-  mass:
-    sampler-type: "uniform"
-    min_value: 0.5
-    max_value: 10
-
-  gravity:
-    sampler-type: "multirange_uniform"
-    intervals: [[7, 10], [15, 20]]
-
-  scale:
-    sampler-type: "uniform"
-    min_value: 0.75
-    max_value: 3
-```
-
-Note that `mass`, `gravity` and `scale` are the names of the environment
-parameters that will be sampled. If a parameter specified in the file doesn't
-exist in the environment, then this parameter will be ignored.
-
-| **Setting**                  | **Description**                                                                                                                                                                                                                                                                                                                         |
-| :--------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resampling-interval`        | Number of steps for the agent to train under a particular environment configuration before resetting the environment with a new sample of `Environment Parameters`.                                                                                                                                                                     |
-| `sampler-type`               | Type of sampler use for this `Environment Parameter`. This is a string that should exist in the `Sampler Factory` (explained below).                                                                                                                                                                                                    |
-| `sampler-type-sub-arguments` | Specify the sub-arguments depending on the `sampler-type`. In the example above, this would correspond to the `intervals` under the `sampler-type` `multirange_uniform` for the `Environment Parameter` called `gravity`. The key name should match the name of the corresponding argument in the sampler definition (explained) below) |
-
-#### Included Sampler Types
-
-Below is a list of included `sampler-type` as part of the toolkit.
-
-- `uniform` - Uniform sampler
-  - Uniformly samples a single float value between defined endpoints. The
-    sub-arguments for this sampler to specify the interval endpoints are as
-    below. The sampling is done in the range of [`min_value`, `max_value`).
-  - **sub-arguments** - `min_value`, `max_value`
-- `gaussian` - Gaussian sampler
-  - Samples a single float value from the distribution characterized by the mean
-    and standard deviation. The sub-arguments to specify the Gaussian
-    distribution to use are as below.
-  - **sub-arguments** - `mean`, `st_dev`
-- `multirange_uniform` - Multirange uniform sampler
-  - Uniformly samples a single float value between the specified intervals.
-    Samples by first performing a weight pick of an interval from the list of
-    intervals (weighted based on interval width) and samples uniformly from the
-    selected interval (half-closed interval, same as the uniform sampler). This
-    sampler can take an arbitrary number of intervals in a list in the following
-    format: [[`interval_1_min`, `interval_1_max`], [`interval_2_min`,
-    `interval_2_max`], ...]
-  - **sub-arguments** - `intervals`
-
-The implementation of the samplers can be found in the
-[sampler_class.py file](../ml-agents/mlagents/trainers/sampler_class.py).
-
-#### Defining a New Sampler Type
-
-If you want to define your own sampler type, you must first inherit the
-_Sampler_ base class (included in the `sampler_class` file) and preserve the
-interface. Once the class for the required method is specified, it must be
-registered in the Sampler Factory.
-
-This can be done by subscribing to the _register_sampler_ method of the
-`SamplerFactory`. The command is as follows:
-
-`SamplerFactory.register_sampler(*custom_sampler_string_key*, *custom_sampler_object*)`
-
-Once the Sampler Factory reflects the new register, the new sampler type can be
-used for sample any `Environment Parameter`. For example, lets say a new sampler
-type was implemented as below and we register the `CustomSampler` class with the
-string `custom-sampler` in the Sampler Factory.
-
-```python
-class CustomSampler(Sampler):
-
-    def __init__(self, argA, argB, argC):
-        self.possible_vals = [argA, argB, argC]
-
-    def sample_all(self):
-        return np.random.choice(self.possible_vals)
-```
-
-Now we need to specify the new sampler type in the sampler YAML file. For
-example, we use this new sampler type for the `Environment Parameter` _mass_.
-
-```yaml
-mass:
-  sampler-type: "custom-sampler"
-  argB: 1
-  argA: 2
-  argC: 3
-```
-
-#### Training with Environment Parameter Randomization
-
-After the sampler configuration is defined, we proceed by launching `mlagents-learn`
-and specify trainer configuration with `parameter-randomization` defined. For example,
-if we wanted to train the 3D ball agent with parameter randomization using
-`Environment Parameters` with sampling setup, we would run
-
-```sh
-mlagents-learn config/ppo/3DBall_randomize.yaml --run-id=3D-Ball-randomize
-```
-
-We can observe progress and metrics via Tensorboard.
 
 ### Training Using Concurrent Unity Instances
 

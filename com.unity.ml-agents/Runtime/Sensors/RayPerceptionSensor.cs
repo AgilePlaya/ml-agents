@@ -78,7 +78,7 @@ namespace Unity.MLAgents.Sensors
         /// <returns></returns>
         public int OutputSize()
         {
-            return (DetectableTags.Count + 2) * Angles.Count;
+            return ((DetectableTags?.Count ?? 0) + 2) * (Angles?.Count ?? 0);
         }
 
         /// <summary>
@@ -106,7 +106,7 @@ namespace Unity.MLAgents.Sensors
             var startPositionWorld = Transform.TransformPoint(startPositionLocal);
             var endPositionWorld = Transform.TransformPoint(endPositionLocal);
 
-            return (StartPositionWorld : startPositionWorld, EndPositionWorld : endPositionWorld);
+            return (StartPositionWorld: startPositionWorld, EndPositionWorld: endPositionWorld);
         }
 
         /// <summary>
@@ -162,6 +162,45 @@ namespace Unity.MLAgents.Sensors
             public float HitFraction;
 
             /// <summary>
+            /// The hit GameObject (or null if there was no hit).
+            /// </summary>
+            public GameObject HitGameObject;
+
+            /// <summary>
+            /// Start position of the ray in world space.
+            /// </summary>
+            public Vector3 StartPositionWorld;
+
+            /// <summary>
+            /// End position of the ray in world space.
+            /// </summary>
+            public Vector3 EndPositionWorld;
+
+            /// <summary>
+            /// The scaled length of the ray.
+            /// </summary>
+            /// <remarks>
+            /// If there is non-(1,1,1) scale, |EndPositionWorld - StartPositionWorld| will be different from
+            /// the input rayLength.
+            /// </remarks>
+            public float ScaledRayLength
+            {
+                get
+                {
+                    var rayDirection = EndPositionWorld - StartPositionWorld;
+                    return rayDirection.magnitude;
+                }
+            }
+
+            /// <summary>
+            /// The scaled size of the cast.
+            /// </summary>
+            /// <remarks>
+            /// If there is non-(1,1,1) scale, the cast radius will be also be scaled.
+            /// </remarks>
+            public float ScaledCastRadius;
+
+            /// <summary>
             /// Writes the ray output information to a subset of the float array.  Each element in the rayAngles array
             /// determines a sublist of data to the observation. The sublist contains the observation data for a single cast.
             /// The list is composed of the following:
@@ -195,52 +234,25 @@ namespace Unity.MLAgents.Sensors
     }
 
     /// <summary>
-    /// Debug information for the raycast hits. This is used by the RayPerceptionSensorComponent.
-    /// </summary>
-    internal class DebugDisplayInfo
-    {
-        public struct RayInfo
-        {
-            public Vector3 worldStart;
-            public Vector3 worldEnd;
-            public float castRadius;
-            public RayPerceptionOutput.RayOutput rayOutput;
-        }
-
-        public void Reset()
-        {
-            m_Frame = Time.frameCount;
-        }
-
-        /// <summary>
-        /// "Age" of the results in number of frames. This is used to adjust the alpha when drawing.
-        /// </summary>
-        public int age
-        {
-            get { return Time.frameCount - m_Frame; }
-        }
-
-        public RayInfo[] rayInfos;
-
-        int m_Frame;
-    }
-
-    /// <summary>
     /// A sensor implementation that supports ray cast-based observations.
     /// </summary>
-    public class RayPerceptionSensor : ISensor
+    public class RayPerceptionSensor : ISensor, IBuiltInSensor
     {
         float[] m_Observations;
-        int[] m_Shape;
+        ObservationSpec m_ObservationSpec;
         string m_Name;
 
         RayPerceptionInput m_RayPerceptionInput;
+        RayPerceptionOutput m_RayPerceptionOutput;
 
-        DebugDisplayInfo m_DebugDisplayInfo;
+        /// <summary>
+        /// Time.frameCount at the last time Update() was called. This is only used for display in gizmos.
+        /// </summary>
+        int m_DebugLastFrameCount;
 
-        internal DebugDisplayInfo debugDisplayInfo
+        internal int DebugLastFrameCount
         {
-            get { return m_DebugDisplayInfo; }
+            get { return m_DebugLastFrameCount; }
         }
 
         /// <summary>
@@ -255,15 +267,21 @@ namespace Unity.MLAgents.Sensors
 
             SetNumObservations(rayInput.OutputSize());
 
-            if (Application.isEditor)
-            {
-                m_DebugDisplayInfo = new DebugDisplayInfo();
-            }
+            m_DebugLastFrameCount = Time.frameCount;
+            m_RayPerceptionOutput = new RayPerceptionOutput();
+        }
+
+        /// <summary>
+        /// The most recent raycast results.
+        /// </summary>
+        public RayPerceptionOutput RayPerceptionOutput
+        {
+            get { return m_RayPerceptionOutput; }
         }
 
         void SetNumObservations(int numObservations)
         {
-            m_Shape = new[] { numObservations };
+            m_ObservationSpec = ObservationSpec.Vector(numObservations);
             m_Observations = new float[numObservations];
         }
 
@@ -295,35 +313,17 @@ namespace Unity.MLAgents.Sensors
             using (TimerStack.Instance.Scoped("RayPerceptionSensor.Perceive"))
             {
                 Array.Clear(m_Observations, 0, m_Observations.Length);
-
                 var numRays = m_RayPerceptionInput.Angles.Count;
                 var numDetectableTags = m_RayPerceptionInput.DetectableTags.Count;
 
-                if (m_DebugDisplayInfo != null)
-                {
-                    // Reset the age information, and resize the buffer if needed.
-                    m_DebugDisplayInfo.Reset();
-                    if (m_DebugDisplayInfo.rayInfos == null || m_DebugDisplayInfo.rayInfos.Length != numRays)
-                    {
-                        m_DebugDisplayInfo.rayInfos = new DebugDisplayInfo.RayInfo[numRays];
-                    }
-                }
-
-                // For each ray, do the casting, and write the information to the observation buffer
+                // For each ray, write the information to the observation buffer
                 for (var rayIndex = 0; rayIndex < numRays; rayIndex++)
                 {
-                    DebugDisplayInfo.RayInfo debugRay;
-                    var rayOutput = PerceiveSingleRay(m_RayPerceptionInput, rayIndex, out debugRay);
-
-                    if (m_DebugDisplayInfo != null)
-                    {
-                        m_DebugDisplayInfo.rayInfos[rayIndex] = debugRay;
-                    }
-
-                    rayOutput.ToFloatArray(numDetectableTags, rayIndex, m_Observations);
+                    m_RayPerceptionOutput.RayOutputs?[rayIndex].ToFloatArray(numDetectableTags, rayIndex, m_Observations);
                 }
+
                 // Finally, add the observations to the ObservationWriter
-                writer.AddRange(m_Observations);
+                writer.AddList(m_Observations);
             }
             return m_Observations.Length;
         }
@@ -331,15 +331,28 @@ namespace Unity.MLAgents.Sensors
         /// <inheritdoc/>
         public void Update()
         {
+            m_DebugLastFrameCount = Time.frameCount;
+            var numRays = m_RayPerceptionInput.Angles.Count;
+
+            if (m_RayPerceptionOutput.RayOutputs == null || m_RayPerceptionOutput.RayOutputs.Length != numRays)
+            {
+                m_RayPerceptionOutput.RayOutputs = new RayPerceptionOutput.RayOutput[numRays];
+            }
+
+            // For each ray, do the casting and save the results.
+            for (var rayIndex = 0; rayIndex < numRays; rayIndex++)
+            {
+                m_RayPerceptionOutput.RayOutputs[rayIndex] = PerceiveSingleRay(m_RayPerceptionInput, rayIndex);
+            }
         }
 
         /// <inheritdoc/>
         public void Reset() { }
 
         /// <inheritdoc/>
-        public int[] GetObservationShape()
+        public ObservationSpec GetObservationSpec()
         {
-            return m_Shape;
+            return m_ObservationSpec;
         }
 
         /// <inheritdoc/>
@@ -355,9 +368,15 @@ namespace Unity.MLAgents.Sensors
         }
 
         /// <inheritdoc/>
-        public virtual SensorCompressionType GetCompressionType()
+        public CompressionSpec GetCompressionSpec()
         {
-            return SensorCompressionType.None;
+            return CompressionSpec.Default();
+        }
+
+        /// <inheritdoc/>
+        public BuiltInSensorType GetBuiltInSensorType()
+        {
+            return BuiltInSensorType.RayPerceptionSensor;
         }
 
         /// <summary>
@@ -372,8 +391,7 @@ namespace Unity.MLAgents.Sensors
 
             for (var rayIndex = 0; rayIndex < input.Angles.Count; rayIndex++)
             {
-                DebugDisplayInfo.RayInfo debugRay;
-                output.RayOutputs[rayIndex] = PerceiveSingleRay(input, rayIndex, out debugRay);
+                output.RayOutputs[rayIndex] = PerceiveSingleRay(input, rayIndex);
             }
 
             return output;
@@ -384,12 +402,10 @@ namespace Unity.MLAgents.Sensors
         /// </summary>
         /// <param name="input"></param>
         /// <param name="rayIndex"></param>
-        /// <param name="debugRayOut"></param>
         /// <returns></returns>
         internal static RayPerceptionOutput.RayOutput PerceiveSingleRay(
             RayPerceptionInput input,
-            int rayIndex,
-            out DebugDisplayInfo.RayInfo debugRayOut
+            int rayIndex
         )
         {
             var unscaledRayLength = input.RayLength;
@@ -410,12 +426,13 @@ namespace Unity.MLAgents.Sensors
                 unscaledCastRadius;
 
             // Do the cast and assign the hit information for each detectable tag.
-            bool castHit;
-            float hitFraction;
-            GameObject hitObject;
+            var castHit = false;
+            var hitFraction = 1.0f;
+            GameObject hitObject = null;
 
             if (input.CastType == RayPerceptionCastType.Cast3D)
             {
+#if MLA_UNITY_PHYSICS_MODULE
                 RaycastHit rayHit;
                 if (scaledCastRadius > 0f)
                 {
@@ -432,9 +449,11 @@ namespace Unity.MLAgents.Sensors
                 // To avoid 0/0, set the fraction to 0.
                 hitFraction = castHit ? (scaledRayLength > 0 ? rayHit.distance / scaledRayLength : 0.0f) : 1.0f;
                 hitObject = castHit ? rayHit.collider.gameObject : null;
+#endif
             }
             else
             {
+#if MLA_UNITY_PHYSICS2D_MODULE
                 RaycastHit2D rayHit;
                 if (scaledCastRadius > 0f)
                 {
@@ -449,6 +468,7 @@ namespace Unity.MLAgents.Sensors
                 castHit = rayHit;
                 hitFraction = castHit ? rayHit.fraction : 1.0f;
                 hitObject = castHit ? rayHit.collider.gameObject : null;
+#endif
             }
 
             var rayOutput = new RayPerceptionOutput.RayOutput
@@ -456,15 +476,34 @@ namespace Unity.MLAgents.Sensors
                 HasHit = castHit,
                 HitFraction = hitFraction,
                 HitTaggedObject = false,
-                HitTagIndex = -1
+                HitTagIndex = -1,
+                HitGameObject = hitObject,
+                StartPositionWorld = startPositionWorld,
+                EndPositionWorld = endPositionWorld,
+                ScaledCastRadius = scaledCastRadius
             };
 
             if (castHit)
             {
                 // Find the index of the tag of the object that was hit.
-                for (var i = 0; i < input.DetectableTags.Count; i++)
+                var numTags = input.DetectableTags?.Count ?? 0;
+                for (var i = 0; i < numTags; i++)
                 {
-                    if (hitObject.CompareTag(input.DetectableTags[i]))
+                    var tagsEqual = false;
+                    try
+                    {
+                        var tag = input.DetectableTags[i];
+                        if (!string.IsNullOrEmpty(tag))
+                        {
+                            tagsEqual = hitObject.CompareTag(tag);
+                        }
+                    }
+                    catch (UnityException)
+                    {
+                        // If the tag is null, empty, or not a valid tag, just ignore it.
+                    }
+
+                    if (tagsEqual)
                     {
                         rayOutput.HitTaggedObject = true;
                         rayOutput.HitTagIndex = i;
@@ -473,10 +512,6 @@ namespace Unity.MLAgents.Sensors
                 }
             }
 
-            debugRayOut.worldStart = startPositionWorld;
-            debugRayOut.worldEnd = endPositionWorld;
-            debugRayOut.rayOutput = rayOutput;
-            debugRayOut.castRadius = scaledCastRadius;
 
             return rayOutput;
         }
