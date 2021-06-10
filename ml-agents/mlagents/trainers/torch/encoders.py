@@ -111,6 +111,30 @@ class VectorInput(nn.Module):
             self.normalizer.update(inputs)
 
 
+class FullyConnectedVisualEncoder(nn.Module):
+    def __init__(
+        self, height: int, width: int, initial_channels: int, output_size: int
+    ):
+        super().__init__()
+        self.output_size = output_size
+        self.input_size = height * width * initial_channels
+        self.dense = nn.Sequential(
+            linear_layer(
+                self.input_size,
+                self.output_size,
+                kernel_init=Initialization.KaimingHeNormal,
+                kernel_gain=1.41,  # Use ReLU gain
+            ),
+            nn.LeakyReLU(),
+        )
+
+    def forward(self, visual_obs: torch.Tensor) -> torch.Tensor:
+        if not exporting_to_onnx.is_exporting():
+            visual_obs = visual_obs.permute([0, 3, 1, 2])
+        hidden = visual_obs.reshape(-1, self.input_size)
+        return self.dense(hidden)
+
+
 class SmallVisualEncoder(nn.Module):
     """
     CNN architecture used by King in their Candy Crush predictor
@@ -257,8 +281,9 @@ class ResNetVisualEncoder(nn.Module):
                 layers.append(ResNetBlock(channel))
             last_channel = channel
         layers.append(Swish())
+        self.final_flat_size = n_channels[-1] * height * width
         self.dense = linear_layer(
-            n_channels[-1] * height * width,
+            self.final_flat_size,
             output_size,
             kernel_init=Initialization.KaimingHeNormal,
             kernel_gain=1.41,  # Use ReLU gain
@@ -268,7 +293,6 @@ class ResNetVisualEncoder(nn.Module):
     def forward(self, visual_obs: torch.Tensor) -> torch.Tensor:
         if not exporting_to_onnx.is_exporting():
             visual_obs = visual_obs.permute([0, 3, 1, 2])
-        batch_size = visual_obs.shape[0]
         hidden = self.sequential(visual_obs)
-        before_out = hidden.reshape(batch_size, -1)
+        before_out = hidden.reshape(-1, self.final_flat_size)
         return torch.relu(self.dense(before_out))

@@ -3,13 +3,17 @@ using UnityEngine;
 
 namespace Unity.MLAgents.Sensors
 {
-    internal class BoxOverlapChecker
+    /// <summary>
+    /// The grid perception strategy that uses box overlap to detect objects.
+    /// </summary>
+    internal class BoxOverlapChecker : IGridPerception
     {
         Vector3 m_CellScale;
         Vector3Int m_GridSize;
         bool m_RotateWithAgent;
         LayerMask m_ColliderMask;
-        GameObject m_RootReference;
+        GameObject m_CenterObject;
+        GameObject m_AgentGameObject;
         string[] m_DetectableTags;
         int m_InitialColliderBufferSize;
         int m_MaxColliderBufferSize;
@@ -32,7 +36,8 @@ namespace Unity.MLAgents.Sensors
             Vector3Int gridSize,
             bool rotateWithAgent,
             LayerMask colliderMask,
-            GameObject rootReference,
+            GameObject centerObject,
+            GameObject agentGameObject,
             string[] detectableTags,
             int initialColliderBufferSize,
             int maxColliderBufferSize)
@@ -41,7 +46,8 @@ namespace Unity.MLAgents.Sensors
             m_GridSize = gridSize;
             m_RotateWithAgent = rotateWithAgent;
             m_ColliderMask = colliderMask;
-            m_RootReference = rootReference;
+            m_CenterObject = centerObject;
+            m_AgentGameObject = agentGameObject;
             m_DetectableTags = detectableTags;
             m_InitialColliderBufferSize = initialColliderBufferSize;
             m_MaxColliderBufferSize = maxColliderBufferSize;
@@ -81,38 +87,31 @@ namespace Unity.MLAgents.Sensors
             }
         }
 
-        /// <summary>Converts the index of the cell to the 3D point (y is zero) relative to grid center</summary>
-        /// <returns>Vector3 of the position of the center of the cell relative to grid center</returns>
-        /// <param name="cellIndex">The index of the cell</param>
-        Vector3 GetCellLocalPosition(int cellIndex)
+        public Vector3 GetCellLocalPosition(int cellIndex)
         {
             float x = (cellIndex / m_GridSize.z - m_CellCenterOffset.x) * m_CellScale.x;
             float z = (cellIndex % m_GridSize.z - m_CellCenterOffset.z) * m_CellScale.z;
             return new Vector3(x, 0, z);
         }
 
-        internal Vector3 GetCellGlobalPosition(int cellIndex)
+        public Vector3 GetCellGlobalPosition(int cellIndex)
         {
             if (m_RotateWithAgent)
             {
-                return m_RootReference.transform.TransformPoint(m_CellLocalPositions[cellIndex]);
+                return m_CenterObject.transform.TransformPoint(m_CellLocalPositions[cellIndex]);
             }
             else
             {
-                return m_CellLocalPositions[cellIndex] + m_RootReference.transform.position;
+                return m_CellLocalPositions[cellIndex] + m_CenterObject.transform.position;
             }
         }
 
-        internal Quaternion GetGridRotation()
+        public Quaternion GetGridRotation()
         {
-            return m_RotateWithAgent ? m_RootReference.transform.rotation : Quaternion.identity;
+            return m_RotateWithAgent ? m_CenterObject.transform.rotation : Quaternion.identity;
         }
 
-        /// <summary>
-        /// Perceive the latest grid status. Call OverlapBoxNonAlloc once to detect colliders.
-        /// Then parse the collider arrays according to all available gridSensor delegates.
-        /// </summary>
-        internal void Update()
+        public void Perceive()
         {
 #if MLA_UNITY_PHYSICS_MODULE
             for (var cellIndex = 0; cellIndex < m_NumCells; cellIndex++)
@@ -132,10 +131,7 @@ namespace Unity.MLAgents.Sensors
 #endif
         }
 
-        /// <summary>
-        /// Same as Update(), but only load data for debug gizmo.
-        /// </summary>
-        internal void UpdateGizmo()
+        public void UpdateGizmo()
         {
 #if MLA_UNITY_PHYSICS_MODULE
             for (var cellIndex = 0; cellIndex < m_NumCells; cellIndex++)
@@ -191,13 +187,13 @@ namespace Unity.MLAgents.Sensors
                 var currentColliderGo = foundColliders[i].gameObject;
 
                 // Continue if the current collider go is the root reference
-                if (ReferenceEquals(currentColliderGo, m_RootReference))
+                if (ReferenceEquals(currentColliderGo, m_AgentGameObject))
                 {
                     continue;
                 }
 
                 var closestColliderPoint = foundColliders[i].ClosestPointOnBounds(cellCenter);
-                var currentDistanceSquared = (closestColliderPoint - m_RootReference.transform.position).sqrMagnitude;
+                var currentDistanceSquared = (closestColliderPoint - m_CenterObject.transform.position).sqrMagnitude;
 
                 if (currentDistanceSquared >= minDistanceSquared)
                 {
@@ -235,7 +231,7 @@ namespace Unity.MLAgents.Sensors
             for (int i = 0; i < numFound; i++)
             {
                 var currentColliderGo = foundColliders[i].gameObject;
-                if (!ReferenceEquals(currentColliderGo, m_RootReference))
+                if (!ReferenceEquals(currentColliderGo, m_AgentGameObject))
                 {
                     detectedAction.Invoke(currentColliderGo, cellIndex);
                 }
@@ -243,7 +239,7 @@ namespace Unity.MLAgents.Sensors
         }
 #endif
 
-        internal void RegisterSensor(GridSensorBase sensor)
+        public void RegisterSensor(GridSensorBase sensor)
         {
 #if MLA_UNITY_PHYSICS_MODULE
             if (sensor.GetProcessCollidersMethod() == ProcessCollidersMethod.ProcessAllColliders)
@@ -257,7 +253,7 @@ namespace Unity.MLAgents.Sensors
 #endif
         }
 
-        internal void RegisterDebugSensor(GridSensorBase debugSensor)
+        public void RegisterDebugSensor(GridSensorBase debugSensor)
         {
 #if MLA_UNITY_PHYSICS_MODULE
             GridOverlapDetectedDebug += debugSensor.ProcessDetectedObject;
