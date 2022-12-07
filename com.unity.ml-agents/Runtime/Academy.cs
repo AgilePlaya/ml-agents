@@ -20,7 +20,7 @@ using Unity.Barracuda;
  * API. For more information on each of these entities, in addition to how to
  * set-up a learning environment and train the behavior of characters in a
  * Unity scene, please browse our documentation pages on GitHub:
- * https://github.com/Unity-Technologies/ml-agents/tree/release_18_docs/docs/
+ * https://github.com/Unity-Technologies/ml-agents/tree/release_20_docs/docs/
  */
 
 namespace Unity.MLAgents
@@ -61,7 +61,7 @@ namespace Unity.MLAgents
     /// fall back to inference or heuristic decisions. (You can also set agents to always use
     /// inference or heuristics.)
     /// </remarks>
-    [HelpURL("https://github.com/Unity-Technologies/ml-agents/tree/release_18_docs/" +
+    [HelpURL("https://github.com/Unity-Technologies/ml-agents/tree/release_20_docs/" +
         "docs/Learning-Environment-Design.md")]
     public class Academy : IDisposable
     {
@@ -107,7 +107,7 @@ namespace Unity.MLAgents
         /// Unity package version of com.unity.ml-agents.
         /// This must match the version string in package.json and is checked in a unit test.
         /// </summary>
-        internal const string k_PackageVersion = "2.1.0-exp.1";
+        internal const string k_PackageVersion = "2.3.0-exp.4";
 
         const int k_EditorTrainingPort = 5004;
 
@@ -183,6 +183,13 @@ namespace Unity.MLAgents
             set { m_InferenceSeed = value; }
         }
 
+        int m_NumAreas;
+
+        /// <summary>
+        /// Number of training areas to instantiate.
+        /// </summary>
+        public int NumAreas => m_NumAreas;
+
         /// <summary>
         /// Returns the RLCapabilities of the python client that the unity process is connected to.
         /// </summary>
@@ -211,7 +218,7 @@ namespace Unity.MLAgents
         /// Signals to all of the <see cref="Agent"/>s that their step is about to begin.
         /// This is a good time for an <see cref="Agent"/> to decide if it would like to
         /// call <see cref="Agent.RequestDecision"/> or <see cref="Agent.RequestAction"/>
-        /// for this step.  Any other pre-step setup could be done during this even as well.
+        /// for this step.  Any other pre-step setup could be done during this event as well.
         /// </summary>
         public event Action<int> AgentPreStep;
 
@@ -241,10 +248,16 @@ namespace Unity.MLAgents
         /// structures, initialize the environment and check for the existence
         /// of a communicator.
         /// </summary>
-        Academy()
+        protected Academy()
         {
             Application.quitting += Dispose;
-
+#if UNITY_EDITOR || UNITY_STANDALONE
+            if (!CommunicatorFactory.CommunicatorRegistered)
+            {
+                Debug.Log("Registered Communicator in Academy.");
+                CommunicatorFactory.Register<ICommunicator>(RpcCommunicator.Create);
+            }
+#endif
             LazyInitialize();
 
 #if UNITY_EDITOR
@@ -425,6 +438,11 @@ namespace Unity.MLAgents
                 Communicator = CommunicatorFactory.Create();
             }
 
+            if (Communicator == null && CommunicatorFactory.Enabled && port > 0)
+            {
+                Debug.Log("Communicator failed to start!");
+            }
+
             if (Communicator != null)
             {
                 // We try to exchange the first message with Python. If this fails, it means
@@ -451,6 +469,7 @@ namespace Unity.MLAgents
                         UnityEngine.Random.InitState(unityRlInitParameters.seed);
                         // We might have inference-only Agents, so set the seed for them too.
                         m_InferenceSeed = unityRlInitParameters.seed;
+                        m_NumAreas = unityRlInitParameters.numAreas;
                         TrainerCapabilities = unityRlInitParameters.TrainerCapabilities;
                         TrainerCapabilities.WarnOnPythonMissingBaseRLCapabilities();
                     }
@@ -610,14 +629,16 @@ namespace Unity.MLAgents
         /// <param name="inferenceDevice">
         /// The inference device (CPU or GPU) the ModelRunner will use.
         /// </param>
+        /// <param name="deterministicInference"> Inference only: set to true if the action selection from model should be
+        /// Deterministic. </param>
         /// <returns> The ModelRunner compatible with the input settings.</returns>
         internal ModelRunner GetOrCreateModelRunner(
-            NNModel model, ActionSpec actionSpec, InferenceDevice inferenceDevice)
+            NNModel model, ActionSpec actionSpec, InferenceDevice inferenceDevice, bool deterministicInference = false)
         {
             var modelRunner = m_ModelRunners.Find(x => x.HasModel(model, inferenceDevice));
             if (modelRunner == null)
             {
-                modelRunner = new ModelRunner(model, actionSpec, inferenceDevice, m_InferenceSeed);
+                modelRunner = new ModelRunner(model, actionSpec, inferenceDevice, m_InferenceSeed, deterministicInference);
                 m_ModelRunners.Add(modelRunner);
                 m_InferenceSeed++;
             }

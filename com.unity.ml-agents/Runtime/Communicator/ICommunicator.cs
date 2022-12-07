@@ -5,7 +5,7 @@ using Unity.MLAgents.Sensors;
 
 namespace Unity.MLAgents
 {
-    internal struct CommunicatorInitParameters
+    public struct CommunicatorInitParameters
     {
         /// <summary>
         /// Port to listen for connections on.
@@ -32,12 +32,17 @@ namespace Unity.MLAgents
         /// </summary>
         public UnityRLCapabilities CSharpCapabilities;
     }
-    internal struct UnityRLInitParameters
+    public struct UnityRLInitParameters
     {
         /// <summary>
         /// A random number generator (RNG) seed sent from the python process to Unity.
         /// </summary>
         public int seed;
+
+        /// <summary>
+        /// The number of areas to replicate if Training Area Replication is used in the scene.
+        /// </summary>
+        public int numAreas;
 
         /// <summary>
         /// The library version of the python process.
@@ -65,12 +70,12 @@ namespace Unity.MLAgents
     /// <summary>
     /// Delegate for handling quit events sent back from the communicator.
     /// </summary>
-    internal delegate void QuitCommandHandler();
+    public delegate void QuitCommandHandler();
 
     /// <summary>
     /// Delegate for handling reset parameter updates sent from the communicator.
     /// </summary>
-    internal delegate void ResetCommandHandler();
+    public delegate void ResetCommandHandler();
 
     /// <summary>
     /// Delegate to handle UnityRLInputParameters updates from the communicator.
@@ -114,7 +119,7 @@ namespace Unity.MLAgents
     UnityOutput and UnityInput can be extended to provide functionalities beyond RL
     UnityRLOutput and UnityRLInput can be extended to provide new RL functionalities
      */
-    internal interface ICommunicator : IDisposable
+    public interface ICommunicator : IDisposable
     {
         /// <summary>
         /// Quit was received by the communicator.

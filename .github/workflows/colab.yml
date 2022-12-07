@@ -8,7 +8,11 @@ on:
     - 'colab/**'
     - '.github/workflows/colab.yml'
   push:
-    branches: [main]
+    branches:
+     - main
+     - develop
+     - 'release/**'
+  workflow_dispatch:
 
 jobs:
   colab:
@@ -19,6 +23,7 @@ jobs:
         QLEARNING_NUM_NEW_EXP: 64
         QLEARNING_BUFFER_SIZE: 64
     strategy:
+      fail-fast: false
       matrix:
         notebook_path: [Colab_UnityEnvironment_1_Run.ipynb, Colab_UnityEnvironment_2_Train.ipynb, Colab_UnityEnvironment_3_SideChannel.ipynb]
     steps:
@@ -26,10 +31,10 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8.x
+        python-version: 3.9.9
     - uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: '3.1.x'
+        dotnet-version: '6.0.x'
     - name: Cache pip
       uses: actions/cache@v2
       with:
@@ -49,7 +54,7 @@ jobs:
         python -m pip install --progress-bar=off -e ./ml-agents
         python -m pip install --progress-bar=off -r colab_requirements.txt
     - name: Execute notebook
-      run: jupyter nbconvert --to notebook --execute --log-level=INFO --ExecutePreprocessor.kernel_name=python3 --output output-${{ matrix.notebook_path }} colab/${{ matrix.notebook_path }}
+      run: jupyter nbconvert --to notebook --execute --log-level=DEBUG --ExecutePreprocessor.kernel_name=python3 --output output-${{ matrix.notebook_path }} colab/${{ matrix.notebook_path }}
     - name: Upload colab results
       uses: actions/upload-artifact@v2
       with:

@@ -10,8 +10,6 @@ from mlagents.trainers.settings import (
     RunOptions,
     TrainerSettings,
     NetworkSettings,
-    PPOSettings,
-    SACSettings,
     RewardSignalType,
     RewardSignalSettings,
     CuriositySettings,
@@ -21,18 +19,25 @@ from mlagents.trainers.settings import (
     UniformSettings,
     GaussianSettings,
     MultiRangeUniformSettings,
-    TrainerType,
     deep_update_dict,
     strict_to_cls,
+    ScheduleType,
 )
+from mlagents.trainers.ppo.trainer import PPOSettings, TRAINER_NAME as PPO_TRAINER_NAME
+from mlagents.trainers.sac.trainer import SACSettings, TRAINER_NAME as SAC_TRAINER_NAME
+
 from mlagents.trainers.exception import TrainerConfigError
+
+TRAINER_SETTING_TYPES = {"ppo": PPOSettings, "sac": SACSettings}
 
 
 def check_if_different(testobj1: object, testobj2: object) -> None:
     assert testobj1 is not testobj2
     if attr.has(testobj1.__class__) and attr.has(testobj2.__class__):
         for key, val in attr.asdict(testobj1, recurse=False).items():
-            if isinstance(val, dict) or isinstance(val, list) or attr.has(val):
+            if (
+                isinstance(val, dict) or isinstance(val, list) or attr.has(val)
+            ) and val != {}:
                 # Note: this check doesn't check the contents of mutables.
                 check_if_different(val, attr.asdict(testobj2, recurse=False)[key])
 
@@ -120,19 +125,20 @@ def test_trainersettings_structure():
     Test structuring method for TrainerSettings
     """
     trainersettings_dict = {
-        "trainer_type": "sac",
+        "trainer_type": SAC_TRAINER_NAME,
         "hyperparameters": {"batch_size": 1024},
         "max_steps": 1.0,
         "reward_signals": {"curiosity": {"encoding_size": 64}},
     }
     trainer_settings = TrainerSettings.structure(trainersettings_dict, TrainerSettings)
+    # check_trainer_setting_types([trainer_settings], TRAINER_SETTING_TYPES)
     assert isinstance(trainer_settings.hyperparameters, SACSettings)
-    assert trainer_settings.trainer_type == TrainerType.SAC
+    assert trainer_settings.trainer_type == SAC_TRAINER_NAME
     assert isinstance(trainer_settings.max_steps, int)
     assert RewardSignalType.CURIOSITY in trainer_settings.reward_signals
 
     # Check invalid trainer type
-    with pytest.raises(ValueError):
+    with pytest.raises(TrainerConfigError):
         trainersettings_dict = {
             "trainer_type": "puppo",
             "hyperparameters": {"batch_size": 1024},
@@ -143,7 +149,7 @@ def test_trainersettings_structure():
     # Check invalid hyperparameter
     with pytest.raises(TrainerConfigError):
         trainersettings_dict = {
-            "trainer_type": "ppo",
+            "trainer_type": PPO_TRAINER_NAME,
             "hyperparameters": {"notahyperparam": 1024},
             "max_steps": 1.0,
         }
@@ -158,6 +164,26 @@ def test_trainersettings_structure():
     with pytest.raises(TrainerConfigError):
         trainersettings_dict = {"hyperparameters": {"batch_size": 1024}}
         TrainerSettings.structure(trainersettings_dict, TrainerSettings)
+
+
+def test_trainersettingsschedules_structure():
+    """
+    Test structuring method for Trainer Settings Schedule
+    """
+    trainersettings_dict = {
+        "trainer_type": PPO_TRAINER_NAME,
+        "hyperparameters": {
+            "learning_rate_schedule": "linear",
+            "beta_schedule": "constant",
+        },
+    }
+    trainer_settings = TrainerSettings.structure(trainersettings_dict, TrainerSettings)
+    assert isinstance(trainer_settings.hyperparameters, PPOSettings)
+    assert (
+        trainer_settings.hyperparameters.learning_rate_schedule == ScheduleType.LINEAR
+    )
+    assert trainer_settings.hyperparameters.beta_schedule == ScheduleType.CONSTANT
+    assert trainer_settings.hyperparameters.epsilon_schedule == ScheduleType.LINEAR
 
 
 def test_reward_signal_structure():
@@ -368,6 +394,7 @@ def test_exportable_settings(use_defaults):
                 init_entcoef: 0.5
                 reward_signal_steps_per_update: 10.0
             network_settings:
+                deterministic: true
                 normalize: false
                 hidden_units: 256
                 num_layers: 3
@@ -395,6 +422,7 @@ def test_exportable_settings(use_defaults):
             - test_env_args2
         base_port: 12345
         num_envs: 8
+        num_areas: 8
         seed: 12345
     engine_settings:
         width: 12345
@@ -481,6 +509,10 @@ def test_exportable_settings(use_defaults):
     # Check that the two exports are the same
     assert dict_export == second_export
 
+    # check if cehckpoint_settings priorotizes resume over initialize from
+    run_options2.checkpoint_settings.prioritize_resume_init()
+    assert run_options2.checkpoint_settings.initialize_from is None
+
 
 def test_environment_settings():
     # default args
@@ -488,6 +520,9 @@ def test_environment_settings():
 
     # 1 env is OK if no env_path
     EnvironmentSettings(num_envs=1)
+
+    # 2 areas are OK
+    EnvironmentSettings(num_areas=2)
 
     # multiple envs is OK if env_path is set
     EnvironmentSettings(num_envs=42, env_path="/foo/bar.exe")
@@ -499,7 +534,10 @@ def test_environment_settings():
 
 def test_default_settings():
     # Make default settings, one nested and one not.
-    default_settings = {"max_steps": 1, "network_settings": {"num_layers": 1000}}
+    default_settings = {
+        "max_steps": 1,
+        "network_settings": {"num_layers": 1000, "deterministic": True},
+    }
     behaviors = {"test1": {"max_steps": 2, "network_settings": {"hidden_units": 2000}}}
     run_options_dict = {"default_settings": default_settings, "behaviors": behaviors}
     run_options = RunOptions.from_dict(run_options_dict)
@@ -512,10 +550,14 @@ def test_default_settings():
     test1_settings = run_options.behaviors["test1"]
     assert test1_settings.max_steps == 2
     assert test1_settings.network_settings.hidden_units == 2000
+    assert test1_settings.network_settings.deterministic is True
     assert test1_settings.network_settings.num_layers == 1000
+
     # Change the overridden fields back, and check if the rest are equal.
     test1_settings.max_steps = 1
-    test1_settings.network_settings.hidden_units == default_settings_cls.network_settings.hidden_units
+    test1_settings.network_settings.hidden_units = (
+        default_settings_cls.network_settings.hidden_units
+    )
     check_if_different(test1_settings, default_settings_cls)
 
 

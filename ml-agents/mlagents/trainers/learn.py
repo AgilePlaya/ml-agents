@@ -13,7 +13,10 @@ import mlagents_envs
 from mlagents.trainers.trainer_controller import TrainerController
 from mlagents.trainers.environment_parameter_manager import EnvironmentParameterManager
 from mlagents.trainers.trainer import TrainerFactory
-from mlagents.trainers.directory_utils import validate_existing_directories
+from mlagents.trainers.directory_utils import (
+    validate_existing_directories,
+    setup_init_path,
+)
 from mlagents.trainers.stats import StatsReporter
 from mlagents.trainers.cli_utils import parser
 from mlagents_envs.environment import UnityEnvironment
@@ -30,6 +33,7 @@ from mlagents_envs.timers import (
 )
 from mlagents_envs import logging_util
 from mlagents.plugins.stats_writer import register_stats_writer_plugins
+from mlagents.plugins.trainer_type import register_trainer_plugins
 
 logger = logging_util.get_logger(__name__)
 
@@ -44,15 +48,19 @@ def get_version_string() -> str:
   PyTorch: {torch_utils.torch.__version__}"""
 
 
-def parse_command_line(argv: Optional[List[str]] = None) -> RunOptions:
+def parse_command_line(
+    argv: Optional[List[str]] = None,
+) -> RunOptions:
+    _, _ = register_trainer_plugins()
     args = parser.parse_args(argv)
     return RunOptions.from_argparse(args)
 
 
-def run_training(run_seed: int, options: RunOptions) -> None:
+def run_training(run_seed: int, options: RunOptions, num_areas: int) -> None:
     """
     Launches training session.
     :param run_seed: Random seed used for training.
+    :param num_areas: Number of training areas to instantiate
     :param options: parsed command line arguments
     """
     with hierarchical_timer("run_training.setup"):
@@ -72,11 +80,14 @@ def run_training(run_seed: int, options: RunOptions) -> None:
         )
         # Make run logs directory
         os.makedirs(run_logs_dir, exist_ok=True)
-        # Load any needed states
+        # Load any needed states in case of resume
         if checkpoint_settings.resume:
             GlobalTrainingStatus.load_state(
                 os.path.join(run_logs_dir, "training_status.json")
             )
+        # In case of initialization, set full init_path for all behaviors
+        elif checkpoint_settings.maybe_init_path is not None:
+            setup_init_path(options.behaviors, checkpoint_settings.maybe_init_path)
 
         # Configure Tensorboard Writers and StatsReporter
         stats_writers = register_stats_writer_plugins(options)
@@ -89,6 +100,7 @@ def run_training(run_seed: int, options: RunOptions) -> None:
             env_settings.env_path,
             engine_settings.no_graphics,
             run_seed,
+            num_areas,
             port,
             env_settings.env_args,
             os.path.abspath(run_logs_dir),  # Unity environment requires absolute path
@@ -162,6 +174,7 @@ def create_environment_factory(
     env_path: Optional[str],
     no_graphics: bool,
     seed: int,
+    num_areas: int,
     start_port: Optional[int],
     env_args: Optional[List[str]],
     log_folder: str,
@@ -175,6 +188,7 @@ def create_environment_factory(
             file_name=env_path,
             worker_id=worker_id,
             seed=env_seed,
+            num_areas=num_areas,
             no_graphics=no_graphics,
             base_port=start_port,
             additional_args=env_args,
@@ -189,20 +203,20 @@ def run_cli(options: RunOptions) -> None:
     try:
         print(
             """
-
-                        ▄▄▄▓▓▓▓
-                   ╓▓▓▓▓▓▓█▓▓▓▓▓
-              ,▄▄▄m▀▀▀'  ,▓▓▓▀▓▓▄                           ▓▓▓  ▓▓▌
-            ▄▓▓▓▀'      ▄▓▓▀  ▓▓▓      ▄▄     ▄▄ ,▄▄ ▄▄▄▄   ,▄▄ ▄▓▓▌▄ ▄▄▄    ,▄▄
-          ▄▓▓▓▀        ▄▓▓▀   ▐▓▓▌     ▓▓▌   ▐▓▓ ▐▓▓▓▀▀▀▓▓▌ ▓▓▓ ▀▓▓▌▀ ^▓▓▌  ╒▓▓▌
-        ▄▓▓▓▓▓▄▄▄▄▄▄▄▄▓▓▓      ▓▀      ▓▓▌   ▐▓▓ ▐▓▓    ▓▓▓ ▓▓▓  ▓▓▌   ▐▓▓▄ ▓▓▌
-        ▀▓▓▓▓▀▀▀▀▀▀▀▀▀▀▓▓▄     ▓▓      ▓▓▌   ▐▓▓ ▐▓▓    ▓▓▓ ▓▓▓  ▓▓▌    ▐▓▓▐▓▓
-          ^█▓▓▓        ▀▓▓▄   ▐▓▓▌     ▓▓▓▓▄▓▓▓▓ ▐▓▓    ▓▓▓ ▓▓▓  ▓▓▓▄    ▓▓▓▓`
-            '▀▓▓▓▄      ^▓▓▓  ▓▓▓       └▀▀▀▀ ▀▀ ^▀▀    `▀▀ `▀▀   '▀▀    ▐▓▓▌
-               ▀▀▀▀▓▄▄▄   ▓▓▓▓▓▓,                                      ▓▓▓▓▀
-                   `▀█▓▓▓▓▓▓▓▓▓▌
-                        ¬`▀▀▀█▓
-
+            ┐  ╖
+        ╓╖╬│╡  ││╬╖╖
+    ╓╖╬│││││┘  ╬│││││╬╖
+ ╖╬│││││╬╜        ╙╬│││││╖╖                               ╗╗╗
+ ╬╬╬╬╖││╦╖        ╖╬││╗╣╣╣╬      ╟╣╣╬    ╟╣╣╣             ╜╜╜  ╟╣╣
+ ╬╬╬╬╬╬╬╬╖│╬╖╖╓╬╪│╓╣╣╣╣╣╣╣╬      ╟╣╣╬    ╟╣╣╣ ╒╣╣╖╗╣╣╣╗   ╣╣╣ ╣╣╣╣╣╣ ╟╣╣╖   ╣╣╣
+ ╬╬╬╬┐  ╙╬╬╬╬│╓╣╣╣╝╜  ╫╣╣╣╬      ╟╣╣╬    ╟╣╣╣ ╟╣╣╣╙ ╙╣╣╣  ╣╣╣ ╙╟╣╣╜╙  ╫╣╣  ╟╣╣
+ ╬╬╬╬┐     ╙╬╬╣╣      ╫╣╣╣╬      ╟╣╣╬    ╟╣╣╣ ╟╣╣╬   ╣╣╣  ╣╣╣  ╟╣╣     ╣╣╣┌╣╣╜
+ ╬╬╬╜       ╬╬╣╣      ╙╝╣╣╬      ╙╣╣╣╗╖╓╗╣╣╣╜ ╟╣╣╬   ╣╣╣  ╣╣╣  ╟╣╣╦╓    ╣╣╣╣╣
+ ╙   ╓╦╖    ╬╬╣╣   ╓╗╗╖            ╙╝╣╣╣╣╝╜   ╘╝╝╜   ╝╝╝  ╝╝╝   ╙╣╣╣    ╟╣╣╣
+   ╩╬╬╬╬╬╬╦╦╬╬╣╣╗╣╣╣╣╣╣╣╝                                             ╫╣╣╣╣
+      ╙╬╬╬╬╬╬╬╣╣╣╣╣╣╝╜
+          ╙╬╬╬╣╣╣╜
+             ╙
         """
         )
     except Exception:
@@ -231,6 +245,7 @@ def run_cli(options: RunOptions) -> None:
         )
 
     run_seed = options.env_settings.seed
+    num_areas = options.env_settings.num_areas
 
     # Add some timer metadata
     add_timer_metadata("mlagents_version", mlagents.trainers.__version__)
@@ -242,7 +257,7 @@ def run_cli(options: RunOptions) -> None:
     if options.env_settings.seed == -1:
         run_seed = np.random.randint(0, 10000)
         logger.debug(f"run_seed set to {run_seed}")
-    run_training(run_seed, options)
+    run_training(run_seed, options, num_areas)
 
 
 def main():

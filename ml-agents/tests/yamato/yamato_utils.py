@@ -24,7 +24,7 @@ def get_base_path():
 
 
 def get_base_output_path():
-    """"
+    """ "
     Returns the artifact folder to use for yamato jobs.
     """
     return os.path.join(get_base_path(), "artifacts")
@@ -45,7 +45,7 @@ def run_standalone_build(
     unity_exe = get_unity_executable_path()
     print(f"Running BuildStandalonePlayer via {unity_exe}")
 
-    # enum values from https://docs.unity3d.com/2019.4/Documentation/ScriptReference/BuildTarget.html
+    # enum values from https://docs.unity3d.com/2021.3/Documentation/ScriptReference/BuildTarget.html
     build_target_to_enum: Mapping[Optional[str], str] = {
         "mac": "StandaloneOSX",
         "osx": "StandaloneOSX",
@@ -134,18 +134,14 @@ def init_venv(
     pip_commands = ["--upgrade pip", "--upgrade setuptools"]
     if mlagents_python_version:
         # install from pypi
-        if platform != "darwin":
-            raise RuntimeError("Yamato can only run tensorflow on mac platforms!")
         pip_commands += [
             f"mlagents=={mlagents_python_version}",
-            f"gym-unity=={mlagents_python_version}",
             # TODO build these and publish to internal pypi
-            "~/tensorflow_pkg/tensorflow-2.0.0-cp37-cp37m-macosx_10_14_x86_64.whl",
             "tf2onnx==1.6.1",
         ]
     else:
         # Local install
-        pip_commands += ["-e ./ml-agents-envs", "-e ./ml-agents", "-e ./gym-unity"]
+        pip_commands += ["-e ./ml-agents-envs", "-e ./ml-agents"]
     if extra_packages:
         pip_commands += extra_packages
 

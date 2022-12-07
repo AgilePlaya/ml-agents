@@ -9,16 +9,118 @@ and this project adheres to
 ## [Unreleased]
 ### Major Changes
 #### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
-#### ml-agents / ml-agents-envs / gym-unity (Python)
+
+#### ml-agents / ml-agents-envs
+
 ### Minor Changes
 #### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
-#### ml-agents / ml-agents-envs / gym-unity (Python)
+
+#### ml-agents / ml-agents-envs
+
 ### Bug Fixes
 #### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+#### ml-agents / ml-agents-envs
+
+
+## [2.3.0-exp.3] - 2022-11-21
+### Major Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The minimum supported Unity version was updated to 2021.3. (#)
+
+#### ml-agents / ml-agents-envs
+- Add your trainers to the package using Ml-Agents Custom Trainers plugin. (#)
+  - ML-Agents Custom Trainers plugin is an extensible plugin system to define new trainers based on the
+  High level trainer API, read more [here](../docs/Python-Custom-Trainer-Plugin.md).
+- Refactored core modules to make ML-Agents internal classes more generalizable to various RL algorithms. (#)
+- The minimum supported Python version for ML-agents has changed to 3.8.13. (#)
+- The minimum supported version of PyTorch was changed to 1.8.0. (#)
+- Add shared critic configurability for PPO. (#)
+- We moved `UnityToGymWrapper` and `PettingZoo` API to `ml-agents-envs` package. All these environments will be
+versioned under `ml-agents-envs` package in the future (#)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Added switch to RayPerceptionSensor to allow rays to be ordered left to right. (#26)
+	- Current alternating order is still the default but will be deprecated.
+- Added suppport for enabling/disabling camera object attached to camera sensor in order to improve performance. (#31)
+
+#### ml-agents / ml-agents-envs
+- Renaming the path that shadows torch with "mlagents/trainers/torch_entities" and update respective imports (#)
+
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+#### ml-agents / ml-agents-envs
+
+
+## [2.3.0-exp.2] - 2022-03-28
+### Major Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+#### ml-agents / ml-agents-envs
+- Refactored to support the new ML-Agents Pro package.
+- The minimum supported Python version for ML-Agents-envs is changed to 3.7.2 (#)
+- Added support for the PettingZoo multi-agent API (#)
+- Refactored `gym-unity` into the `ml-agents-envs` package (#)
+
+### Minor Changes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Upgrade barracuda dependency to 3.0.0 (#)
+#### ml-agents / ml-agents-envs
+- Added the new unity_vec_env file to the ml-agents-envs module
+- Extended support to python 3.9.10
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+#### ml-agents / ml-agents-envs
+
+## [2.2.1-exp.1] - 2022-01-14
+### Major Changes
+
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- The minimum supported Unity version was updated to 2020.3. (#5673)
+- Added a new feature to replicate training areas dynamically during runtime. (#5568)
+- Update Barracuda to 2.3.1-preview (#5591)
+- Update Input System to 1.3.0 (#5661)
+
 #### ml-agents / ml-agents-envs / gym-unity (Python)
+
+### Minor Changes
+
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Added the capacity to initialize behaviors from any checkpoint and not just the latest one (#5525)
+- Added the ability to get a read-only view of the stacked observations (#5523)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Set gym version in gym-unity to gym release 0.20.0 (#5540)
+- Added support for having `beta`, `epsilon`, and `learning rate` on separate schedules (affects only PPO and POCA). (#5538)
+- Changed default behavior to restart crashed Unity environments rather than exiting. (#5553)
+  - Rate & lifetime limits on this are configurable via 3 new yaml options
+    1. env_params.max_lifetime_restarts (--max-lifetime-restarts) [default=10]
+    2. env_params.restarts_rate_limit_n (--restarts-rate-limit-n) [default=1]
+    3. env_params.restarts_rate_limit_period_s (--restarts-rate-limit-period-s) [default=60]
+- Deterministic action selection is now supported during training and inference(#5619)
+    - Added a new `--deterministic` cli flag to deterministically select the most probable actions in policy. The same thing can
+      be achieved by adding `deterministic: true` under `network_settings` of the run options configuration.(#5597)
+    - Extra tensors are now serialized to support deterministic action selection in onnx. (#5593)
+    - Support inference with deterministic action selection in editor (#5599)
+- Added minimal analytics collection to LL-API (#5511)
+- Update Colab notebooks for GridWorld example with DQN illustrating the use of the Python API and how to export to ONNX (#5643)
+
+### Bug Fixes
+#### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
+- Update gRPC native lib to universal for arm64 and x86_64. This change should enable ml-agents usage on mac M1 (#5283, #5519)
+- Fixed a bug where ml-agents code wouldn't compile on platforms that didn't support analytics (PS4/5, XBoxOne) (#5628)
+
+#### ml-agents / ml-agents-envs / gym-unity (Python)
+- Fixed a bug where the critics were not being normalized during training. (#5595)
+- Fixed the bug where curriculum learning would crash because of the incorrect run_options parsing. (#5586)
 - Fixed a bug in multi-agent cooperative training where agents might not receive all of the states of
 terminated teammates. (#5441)
 - Fixed wrong attribute name in argparser for torch device option (#5433)(#5467)
+- Fixed conflicting CLI and yaml options regarding resume & initialize_from (#5495)
+- Fixed failing tests for gym-unity due to gym 0.20.0 release (#5540)
+- Fixed a bug in VAIL where the variational bottleneck was not properly passing gradients (#5546)
+- Harden user PII protection logic and extend TrainingAnalytics to expose detailed configuration parameters. (#5512)
 
 ## [2.1.0-exp.1] - 2021-06-09
 ### Minor Changes
@@ -26,10 +128,12 @@ terminated teammates. (#5441)
 - update Barracuda to 2.0.0-pre.3. (#5385)
 - Fixed NullReferenceException when adding Behavior Parameters with no Agent. (#5382)
 - Add stacking option in Editor for `VectorSensorComponent`. (#5376)
+
 #### ml-agents / ml-agents-envs / gym-unity (Python)
 - Lock cattrs dependency version to 1.6. (#5397)
 - Added a fully connected visual encoder for environments with very small image inputs. (#5351)
 - Colab notebooks illustrating the use of the Python API are now part of the repository. (#5399)
+
 ### Bug Fixes
 #### com.unity.ml-agents / com.unity.ml-agents.extensions (C#)
 - RigidBodySensorComponent now displays a warning if it's used in a way that won't generate useful observations. (#5387)
